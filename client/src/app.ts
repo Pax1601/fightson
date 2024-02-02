@@ -1,9 +1,13 @@
 import { Clock } from "./clock";
+import { Renderer } from "./renderer";
 import { sleep } from "./utils";
+
+const FPS = 60;
 
 export class App {
     webSocket: WebSocket;
     clock: Clock;
+    renderer: Renderer;
 
     constructor() {
         this.webSocket = new WebSocket(`ws://localhost:3001`); //TODO configurable
@@ -13,12 +17,19 @@ export class App {
         this.webSocket.addEventListener('close', (ev) => this.onClose(ev));
 
         this.clock = new Clock();
+
+        let canvas = document.getElementById("canvas");
+        if (canvas)
+            this.renderer = new Renderer(canvas as HTMLCanvasElement);
+        else
+            throw "Error retrieving canvas"
     }
 
     async start() {
         this.waitForConnection().then(
             async () => {
                 await this.synchronizeTime();
+                window.setInterval(() => this.loop(), 1 / FPS * 1000);
             },
             (err) => {
                 console.error(err);
@@ -73,5 +84,9 @@ export class App {
         let delta = time - (Date.now() - delay);
 
         this.clock.addDeltaSample(delta);
+    }
+
+    loop() {
+        this.renderer.draw();
     }
 }
