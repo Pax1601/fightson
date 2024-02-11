@@ -1,4 +1,4 @@
-import { Inputs } from "./core";
+import { GamepadInputs, KeyboardInputs } from "./core";
 import { Simulation } from "./simulation";
 
 /** Airplane simulation. Extends the basic Simulation class 
@@ -9,7 +9,7 @@ export class AirplaneSimulation extends Simulation {
     maxThrust = 100;
     liftCoefficient = 2;
     dragCoefficient = 1e-3;
-    efficiency = 0.25;
+    efficiency = 1;
     minSpeed = 50;
     maxAngleOfAttack = 0.8;
     stalled = false;
@@ -18,18 +18,26 @@ export class AirplaneSimulation extends Simulation {
     /* Airplane specific controls */
     throttlePosition: number = 0.5;
     angleOfAttack: number = 0;
+    angleOfBank: number = 0;
 
     /* Default speed at spawn */
     v: number = 100;
 
     /* Airplane inputs */
-    inputs = {
-        'up': false,
-        'down': false,
-        'left': false,
-        'right': false,
-        'gun': false
+    keyboardInputs: KeyboardInputs = {
+        up: false,
+        down: false,
+        left: false,
+        right: false,
+        gun: false
     };
+
+    gamepadInputs: GamepadInputs = {
+        pitch: null,
+        roll: null,
+        thrust: null,
+        gun: null
+    }
 
     /* Boolean to represent if this is the airplane controlled by the client */
     ownship: boolean;
@@ -44,27 +52,51 @@ export class AirplaneSimulation extends Simulation {
      * @param dt Delta time, in seconds
      */
     integrate(dt: number, addTrail: boolean = true) {
+        this.angleOfAttack -= 0.5 * this.angleOfAttack * dt;
+
+        /* Keyboard callbacks in case of lack of gamepads */
         /* Change the angle of attack depending on the user input */
-        if (this.inputs['left'])
-            this.angleOfAttack = Math.max(-1, this.angleOfAttack - dt);
-        else if (this.inputs['right'])
-            this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);    
+        if (this.keyboardInputs['left'])
+            this.angleOfBank = Math.max(-1, this.angleOfBank - dt);
+        else if (this.keyboardInputs['right'])
+            this.angleOfBank = Math.min(1, this.angleOfBank + dt);    
 
         /* Change the throttle position depending on the user input */
-        if (this.inputs['down'])
-            this.throttlePosition = Math.max(-0.3, this.throttlePosition - dt);
-        else if (this.inputs['up'])
-            this.throttlePosition = Math.min(1, this.throttlePosition + dt);  
-            
+        if (this.keyboardInputs['up'])
+            this.angleOfAttack = Math.max(-0.3, this.angleOfAttack - dt);
+        else if (this.keyboardInputs['down'])
+            this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);        
+
+        if (this.gamepadInputs.pitch) {
+            if (this.gamepadInputs.pitch > 0)
+                this.angleOfAttack = this.gamepadInputs.pitch;
+            else
+                this.angleOfAttack = this.gamepadInputs.pitch * 0.3;
+        }
+
+        if (this.gamepadInputs.roll) {
+            this.angleOfBank += 3 * this.gamepadInputs.roll * dt;
+            this.angleOfBank = Math.max(this.angleOfBank, -1);
+            this.angleOfBank = Math.min(this.angleOfBank, 1);
+        }
+        
         super.integrate(dt, addTrail);
     }
 
-    /** Set the inputs
+    /** Set the keyboard inputs
      * 
-     * @param inputs Inputs structure
+     * @param keyboardInputs Inputs structure
      */
-    setInputs(inputs: Inputs) {
-        this.inputs = inputs;
+    setKeyboardInputs(keyboardInputs: KeyboardInputs) {
+        this.keyboardInputs = keyboardInputs;
+    }
+
+    /** Set the keyboard inputs
+     * 
+     * @param gamepadInputs Inputs structure
+     */
+    setGamepadInputs(gamepadInputs: GamepadInputs) {
+        this.gamepadInputs = gamepadInputs;
     }
 
     /** Compute the lift of the airplane
@@ -75,12 +107,12 @@ export class AirplaneSimulation extends Simulation {
         /* Below stall, lift increases linearly */
         if (Math.abs(this.angleOfAttack) < this.maxAngleOfAttack) {
             this.stalled = false;
-            return (this.v / 200 * this.v / 200) * this.liftCoefficient * Math.abs(this.angleOfAttack) * Math.sign(this.angleOfAttack);
+            return (this.v / 200 * this.v / 200) * this.liftCoefficient * this.angleOfAttack * this.angleOfBank;
         }
         /* After stall lift drops quickly */
         else {
             this.stalled = true;
-            return (this.v / 200 * this.v / 200) * this.maxAngleOfAttack * this.liftCoefficient * (1 + (this.maxAngleOfAttack - Math.abs(this.angleOfAttack)) / this.maxAngleOfAttack * 2) * Math.sign(this.angleOfAttack);
+            return (this.v / 200 * this.v / 200) * this.maxAngleOfAttack * this.liftCoefficient * (1 + (this.maxAngleOfAttack - Math.abs(this.angleOfAttack)) / this.maxAngleOfAttack * 2) * Math.sign(this.angleOfAttack) * this.angleOfBank;
         }
     }
     /** Compute the airplane drag

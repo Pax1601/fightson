@@ -32,9 +32,9 @@ export class Airplane extends AirplaneSimulation {
         ctx.stroke();
 
         /* Draw the airplane */
-        if (this.angleOfAttack < -0.1) 
+        if (this.angleOfBank < -0.3) 
             this.img.src = `${this.src}/left.png`;
-        else if (this.angleOfAttack > 0.1) 
+        else if (this.angleOfBank > 0.3) 
             this.img.src = `${this.src}/right.png`;
         else
             this.img.src = `${this.src}/top.png`;
@@ -43,7 +43,7 @@ export class Airplane extends AirplaneSimulation {
         let xBuffet = (Math.random() - 0.5) * 5 * this.angleOfAttack * this.angleOfAttack;
         let yBuffet = (Math.random() - 0.5) * 5 * this.angleOfAttack * this.angleOfAttack;
         ctx.translate(this.x + xBuffet, this.y + yBuffet);
-        ctx.rotate(this.track + 0.25 * this.angleOfAttack);
+        ctx.rotate(this.track + 0.25 * this.angleOfAttack * this.angleOfBank);
         ctx.drawImage(this.img, -this.img.width / 2, -this.img.height / 2);
         ctx.restore();
     }

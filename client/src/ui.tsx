@@ -32,6 +32,6 @@ export class FightsOnUI extends Component<FightsOnProps, FightsOnState> {
             coreRunning: true
         });
 
-        this.props.core.start();        
+        this.props.core.start(loginState);        
     }
 }
