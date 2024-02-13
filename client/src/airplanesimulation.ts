@@ -182,6 +182,7 @@ export class AirplaneSimulation extends Simulation {
             v: this.v,
             track: this.track,
             angleOfAttack: this.angleOfAttack,
+            angleOfBank: this.angleOfBank,
             throttlePosition: this.throttlePosition,
             life: this.life
         }
@@ -197,6 +198,7 @@ export class AirplaneSimulation extends Simulation {
         this.v = state.v;
         this.track = state.track;
         this.angleOfAttack = state.angleOfAttack;
+        this.angleOfBank = state.angleOfBank;
         this.throttlePosition = state.throttlePosition;
         this.life = state.life;
     }

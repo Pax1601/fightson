@@ -1,14 +1,23 @@
 import { MissileSimulation } from "./missilesimulation";
 import { Smoke } from "./smoke";
+import { nanoid } from 'nanoid';
 
 /** Missile class. Extends the MissileSimulation class to separate the simulation from the rendering.
  * 
  */
 export class Missile extends MissileSimulation {
     smokes: Smoke[] = [];
+    parent: string;
+    uuid: string;
+    exploded: boolean = false;
 
-    constructor() {
+    constructor(parent: string, uuid: string | undefined = undefined) {
         super();
+        this.parent = parent;
+        if (uuid)
+            this.uuid = uuid;
+        else
+            this.uuid = nanoid(10);
     }
 
     /** Draw the missile
@@ -17,16 +26,18 @@ export class Missile extends MissileSimulation {
      */
     draw(ctx: CanvasRenderingContext2D) {
         /* Draw the missile */
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.track);
-        ctx.beginPath()
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.moveTo(-3, 0);
-        ctx.lineTo(3, 0);
-        ctx.stroke();
-        ctx.restore();
+        if (!this.exploded) {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.track);
+            ctx.beginPath()
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.moveTo(-3, 0);
+            ctx.lineTo(3, 0);
+            ctx.stroke();
+            ctx.restore();
+        }
 
         /* Draw the smoke */
         if (this.fuel > 0){

@@ -52,6 +52,8 @@ export class ClientHandler {
                 break;
             case "update":
                 this.onUpdateMessage(json);
+            case "remove":
+                this.onRemoveMessage(json);
             default: 
                 break;
         }
@@ -92,6 +94,14 @@ export class ClientHandler {
      * @param json Message content
      */
     onUpdateMessage(json: any) {
+        this.server.propagate(this, json);
+    }
+
+    /** Remove message callback. This message is simply propagated to all other clients.
+     * 
+     * @param json Message content
+     */
+    onRemoveMessage(json: any) {
         this.server.propagate(this, json);
     }
 

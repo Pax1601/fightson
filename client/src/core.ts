@@ -36,7 +36,7 @@ export class FightsOnCore {
     ownship: Airplane;
     airplanes: { [key: string]: Airplane } = {};
     bullets: Bullet[] = [];
-    missiles: Missile[] = [];
+    missiles: { [key: string]: Missile }  = {};
     previousIntegrationTime: number = 0;
     pressedKeys: { [key: string]: boolean } = {};
     interval: number = 0;
@@ -165,6 +165,9 @@ export class FightsOnCore {
             case "update":
                 this.onUpdateMessage(json);
                 break;
+            case "remove":
+                this.onRemoveMessage(json);
+                break;
             default:
                 break;
         }
@@ -258,21 +261,40 @@ export class FightsOnCore {
             /* Add the bullet to the list */
             this.bullets.push(bullet);
         } else if (json.type === "missile") {
-            /* Create the missile. Missile update signals are only sent on missile creation to avoid 
-            excessive data transfers */
-            let missile = new Missile();
+            /* If the missile is not yet in the dictionary, add it using its uuid as key */
+            if (!(json.uuid in this.missiles)) {
+                this.missiles[json.uuid] = new Missile(json.parent, json.uuid);
+                console.log(`Birth event for missile ${json.uuid}`);
+            }
 
-            /* Set the missile state */
-            missile.setState(json.state);
-
-            /* Integrate to compensate for lag */
             let dt = (this.clock.getTime() - json.time) / 1000;
-            missile.integrate(dt);
 
-            /* Add the missile to the list */
-            this.missiles.push(missile);
+            /* Reject old messages */
+            if (dt < 0.25) {
+                /* Set the state of the missile */
+                this.missiles[json.uuid].setState(json.state);
+
+                /* Integrate to compensate for lag */
+                this.missiles[json.uuid].integrate(dt, false);
+            }
         }
     }
+
+    
+    /** Remove request message callback.
+     * 
+     * @param json Message content 
+     */
+    onRemoveMessage(json: any) {
+        if (json.type === "missile") {
+            /* If the airplane is not yet in the dictionary, add it using its uuid as key */
+            if (json.uuid in this.missiles) {
+                this.missiles[json.uuid].exploded = true;;
+                console.log(`Remove event for missile ${json.uuid}`);
+            }
+        }
+    }
+
 
     /** This is the main loop of the application. Rendering and simulation loops are tied together, which is not good.
      * But for something this simple should be good enough.
@@ -321,23 +343,22 @@ export class FightsOnCore {
                 if (distance(this.ownship, bullet) < 10) {
                     this.ownship.life -= 10;
                 }
-                if (this.ownship.life <= 0) {
-                    window.clearInterval(this.interval);
-                    location.replace(location.href);
-                }
             }
 
             /* Hit detection */
-            for (let missile of this.missiles) {
-                if (distance(this.ownship, missile) < 10) {
-                    this.ownship.life -= 50;
-                }
-                if (this.ownship.life <= 0) {
-                    window.clearInterval(this.interval);
-                    location.replace(location.href);
-                }
+            for (let key in this.missiles) {
+                let missile = this.missiles[key];
 
-                // TODO remove missile
+                if (distance(this.ownship, missile) < 10 && !missile.exploded) {
+                    this.ownship.life -= 50;
+                    this.missiles[key].exploded = true;
+                    this.webSocket.send(JSON.stringify({ id: "remove", type: "missile", uuid: missile.uuid }));
+                } 
+            }
+
+            if (this.ownship.life <= 0) {
+                //window.clearInterval(this.interval);
+                //location.replace(location.href);
             }
         }
     }
@@ -361,11 +382,16 @@ export class FightsOnCore {
         }
 
         /* Integrate all the missiles */
-        for (let missile of this.missiles) {
+        for (let key in this.missiles) {
+            let missile = this.missiles[key];
             missile.integrate(dt);
             /* Remove any missile that got too slow. TODO: move inside missile class */
             if (missile.v < 50)
-                this.missiles = this.missiles.filter(b => b !== missile);
+                this.missiles[key].exploded = true;
+
+            /* Send an update on the position of the missile to the server if we are the parent */
+            if (missile.parent === this.uuid) 
+                this.webSocket.send(JSON.stringify({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: this.clock.getTime(), state: missile.getState() }));
         }
     }
 
@@ -444,16 +470,16 @@ export class FightsOnCore {
             let gunTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank) + (Math.random() - 0.5) * 0.05;
             bullet.setState({ x: this.ownship.x + 10 * Math.cos(gunTrack), y: this.ownship.y + 10 * Math.sin(gunTrack), track: gunTrack, v: bullet.v + this.ownship.v });
             this.bullets.push(bullet);
-            this.webSocket.send(JSON.stringify({ id: "update", type: "bullet", uuid: this.uuid, time: this.clock.getTime(), state: bullet.getState() }));
+            this.webSocket.send(JSON.stringify({ id: "update", type: "bullet", parent: this.uuid, time: this.clock.getTime(), state: bullet.getState() }));
         }
 
         if (this.getKeyboardInputs()['missile'] && this.missileCooldown == 0) {
-            let missile = new Missile();
+            let missile = new Missile(this.uuid);
             let missileTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank);
             missile.setState({ x: this.ownship.x + 20 * Math.cos(missileTrack), y: this.ownship.y + 10 * Math.sin(missileTrack), track: missileTrack, v: this.ownship.v });
             missile.lockTarget(Object.values(this.airplanes));
-            this.missiles.push(missile);
-            this.webSocket.send(JSON.stringify({ id: "update", type: "missile", uuid: this.uuid, time: this.clock.getTime(), state: missile.getState() }));
+            this.missiles[missile.uuid] = missile;
+            this.webSocket.send(JSON.stringify({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: this.clock.getTime(), state: missile.getState() }));
             this.missileCooldown = 1.0;
         }
     }

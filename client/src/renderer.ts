@@ -351,7 +351,7 @@ export class Renderer {
         }
 
         /* Draw missiles */
-        for (let missile of core.missiles) {
+        for (let missile of Object.values(core.missiles)) {
             this.drawMissile(missile);
         }
 
