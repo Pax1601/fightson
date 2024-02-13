@@ -1,9 +1,44 @@
 <html>
-    <head>
-    </head>
-    <body style="margin: 0px; padding: 0px;">
-        <div id="react-root" style="position: absolute; top: 0px; left: 0px;"></div>
-        <canvas id="canvas" style="position: absolute; top: 0px; left: 0px;"></canvas>
-    </body>
-    <script src="client/javascripts/bundle.js"></script> 
+
+<head>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:400,600,300,800" rel="stylesheet" type="text/css">
+    <style>
+        * {
+            font-family: 'Open Sans', 'Arial';
+        }
+
+        input, select {
+            background-color: #3A434D;
+            color: #d3d3d3;
+            border: 1px solid transparent;
+            border-radius: 5px 5px 5px 5px;
+            outline: none;
+            font-size: 14px;
+            font-weight: 400;
+            -webkit-appearance: none;
+            padding: 5px;
+        }
+
+        button {
+            cursor: pointer;
+            background-color: white;
+            color: #181e25;
+            border: 1px solid transparent;
+            border-radius: 5px 5px 5px 5px;
+            outline: none;
+            font-size: 14px;
+            font-weight: 400;
+            padding: 5px;
+            min-width: 80px;
+            -webkit-appearance: none;
+        }
+    </style>
+</head>
+
+<body style="margin: 0px; padding: 0px;">
+    <div id="react-root" style="position: absolute; top: 0px; left: 0px;"></div>
+    <canvas id="canvas" style="position: absolute; top: 0px; left: 0px;"></canvas>
+</body>
+<script src="client/javascripts/bundle.js"></script>
+
 </html>

@@ -1,5 +1,6 @@
 import { Airplane } from "./airplane";
 import { Bullet } from "./bullet";
+import { Missile } from "./missile";
 import { Clock } from "./clock";
 import { LoginState } from "./login";
 import { Renderer } from "./renderer";
@@ -14,7 +15,8 @@ export interface KeyboardInputs {
     down: boolean,
     left: boolean,
     right: boolean,
-    gun: boolean
+    gun: boolean,
+    missile: boolean
 }
 
 export interface GamepadInputs {
@@ -34,6 +36,7 @@ export class FightsOnCore {
     ownship: Airplane;
     airplanes: { [key: string]: Airplane } = {};
     bullets: Bullet[] = [];
+    missiles: Missile[] = [];
     previousIntegrationTime: number = 0;
     pressedKeys: { [key: string]: boolean } = {};
     interval: number = 0;
@@ -43,6 +46,9 @@ export class FightsOnCore {
         thrustControl: { id: string, axis: number } | null,
         gunControl: { id: string, button: number } | null
     }
+
+    missileCooldown = 0;
+    missileCooldownPeriod = 5;
 
     constructor() {
         /* Connect to the websocket */
@@ -66,7 +72,6 @@ export class FightsOnCore {
         else
             throw "Error retrieving canvas"
 
-
         /* Initialize the player airplane */
         this.ownship = new Airplane(true);
         this.airplanes = { "ownship": this.ownship };
@@ -87,15 +92,20 @@ export class FightsOnCore {
         /* Read the login state */
         this.username = loginState.username;
         this.gamepadControls = {
-            pitchControl: loginState.pitchControl,
-            rollControl: loginState.rollControl,
-            thrustControl: loginState.thrustControl,
-            gunControl: loginState.gunControl
+            pitchControl: loginState.pitchGamepad,
+            rollControl: loginState.rollGamepad,
+            thrustControl: loginState.thrustGamepad,
+            gunControl: loginState.gunGamepad
         }
 
         /* Wait for the WebSocket to actually connect */
         this.waitForConnection().then(
             async () => {
+                /* Send user data */
+                let data = JSON.stringify({ id: "data", username: this.username });
+                this.webSocket.send(data);
+
+
                 /* Perform the clock synchronization with the server */
                 await this.synchronizeTime();
 
@@ -219,7 +229,7 @@ export class FightsOnCore {
         if (json.type === "airplane") {
             /* If the airplane is not yet in the dictionary, add it using its uuid as key */
             if (!(json.uuid in this.airplanes)) {
-                this.airplanes[json.uuid] = new Airplane();
+                this.airplanes[json.uuid] = new Airplane(false, json.username);
                 console.log(`Birth event for airplane ${json.uuid}`);
             }
 
@@ -247,6 +257,20 @@ export class FightsOnCore {
 
             /* Add the bullet to the list */
             this.bullets.push(bullet);
+        } else if (json.type === "missile") {
+            /* Create the missile. Missile update signals are only sent on missile creation to avoid 
+            excessive data transfers */
+            let missile = new Missile();
+
+            /* Set the missile state */
+            missile.setState(json.state);
+
+            /* Integrate to compensate for lag */
+            let dt = (this.clock.getTime() - json.time) / 1000;
+            missile.integrate(dt);
+
+            /* Add the missile to the list */
+            this.missiles.push(missile);
         }
     }
 
@@ -260,6 +284,11 @@ export class FightsOnCore {
             this.previousIntegrationTime = this.clock.getTime();
         }
         else {
+            /* Compute the time step */
+            const newTime = this.clock.getTime();
+            const dt = (newTime - this.previousIntegrationTime) / 1000; /* To seconds */
+            this.previousIntegrationTime = newTime;
+
             /* Set the user keyboard inputs to the ownship */
             const keyboardInputs = this.getKeyboardInputs();
             this.ownship.setKeyboardInputs(keyboardInputs);
@@ -268,43 +297,24 @@ export class FightsOnCore {
             const gamepadInputs = this.getGamepadInputs();
             this.ownship.setGamepadInputs(gamepadInputs);
 
+            /* Apply missile cooldown to limit the number of missiles fired */
+            if (this.missileCooldown > 0) {
+                this.missileCooldown -= 1 / this.missileCooldownPeriod * dt;
+                if (this.missileCooldown < 0)
+                    this.missileCooldown = 0;
+            }
+            
             /* Depending on the user inputs, fire any required weapons */
             this.fireWeapons();
 
-            /* Compute the time step */
-            const newTime = this.clock.getTime();
-            const dt = (newTime - this.previousIntegrationTime) / 1000; /* To seconds */
-            this.previousIntegrationTime = newTime;
-
             /* Integrate the simulation */
             this.integrate(dt);
-
-            /* Print debug information */
-            let xDiv = document.getElementById("x");
-            if (xDiv)
-                xDiv.innerHTML = "x: " + this.ownship.x.toFixed(0);
-
-            let yDiv = document.getElementById("y");
-            if (yDiv)
-                yDiv.innerHTML = "y: " + this.ownship.y.toFixed(0);
-
-            let vDiv = document.getElementById("v");
-            if (vDiv)
-                vDiv.innerHTML = "speed: " + this.ownship.v.toFixed(0);
-
-            let omegaDiv = document.getElementById("omega");
-            if (omegaDiv)
-                omegaDiv.innerHTML = "rate: " + (this.ownship.omega * 180 / Math.PI).toFixed(2) + "deg/s";
-
-            let rDiv = document.getElementById("r");
-            if (rDiv)
-                rDiv.innerHTML = "life: " + (this.ownship.life).toFixed(0);
 
             /* Render the scene */
             this.renderer.draw(this, dt);
 
             /* Send an update on the position of the ownship to the server */
-            this.webSocket.send(JSON.stringify({ id: "update", type: "airplane", uuid: this.uuid, time: this.clock.getTime(), state: this.ownship.getState() }));
+            this.webSocket.send(JSON.stringify({ id: "update", type: "airplane", uuid: this.uuid, time: this.clock.getTime(), state: this.ownship.getState(), username: this.username }));
 
             /* Hit detection */
             for (let bullet of this.bullets) {
@@ -315,6 +325,19 @@ export class FightsOnCore {
                     window.clearInterval(this.interval);
                     location.replace(location.href);
                 }
+            }
+
+            /* Hit detection */
+            for (let missile of this.missiles) {
+                if (distance(this.ownship, missile) < 10) {
+                    this.ownship.life -= 50;
+                }
+                if (this.ownship.life <= 0) {
+                    window.clearInterval(this.interval);
+                    location.replace(location.href);
+                }
+
+                // TODO remove missile
             }
         }
     }
@@ -336,6 +359,14 @@ export class FightsOnCore {
             if (bullet.v < 250)
                 this.bullets = this.bullets.filter(b => b !== bullet);
         }
+
+        /* Integrate all the missiles */
+        for (let missile of this.missiles) {
+            missile.integrate(dt);
+            /* Remove any missile that got too slow. TODO: move inside missile class */
+            if (missile.v < 50)
+                this.missiles = this.missiles.filter(b => b !== missile);
+        }
     }
 
     /** Gets the currently active keyboard inputs
@@ -344,11 +375,12 @@ export class FightsOnCore {
      */
     getKeyboardInputs() {
         return {
-            up: this.pressedKeys['ArrowUp'] ?? false,
-            down: this.pressedKeys['ArrowDown'] ?? false,
-            left: this.pressedKeys['ArrowLeft'] ?? false,
-            right: this.pressedKeys['ArrowRight'] ?? false,
-            gun: this.pressedKeys['w'] ?? false
+            up: this.pressedKeys['KeyW'] ?? false,
+            down: this.pressedKeys['KeyS'] ?? false,
+            left: this.pressedKeys['KeyA'] ?? false,
+            right: this.pressedKeys['KeyD'] ?? false,
+            gun: this.pressedKeys['Space'] ?? false,
+            missile: this.pressedKeys['KeyE'] ?? false,
         }
     }
 
@@ -392,7 +424,7 @@ export class FightsOnCore {
      * @param ev Keyboard event
      */
     onKeyDown(ev: KeyboardEvent) {
-        this.pressedKeys[ev.key] = true;
+        this.pressedKeys[ev.code] = true;
     }
 
     /** On key up event
@@ -400,7 +432,7 @@ export class FightsOnCore {
      * @param ev Keyboard event
      */
     onKeyUp(ev: KeyboardEvent) {
-        this.pressedKeys[ev.key] = false;
+        this.pressedKeys[ev.code] = false;
     }
 
     /** Fires weapons depending on current inputs.
@@ -409,12 +441,20 @@ export class FightsOnCore {
     fireWeapons() {
         if (this.getKeyboardInputs()['gun']) {
             let bullet = new Bullet();
-            let gunTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * this.ownship.angleOfBank + (Math.random() - 0.5) * 0.05;
+            let gunTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank) + (Math.random() - 0.5) * 0.05;
             bullet.setState({ x: this.ownship.x + 10 * Math.cos(gunTrack), y: this.ownship.y + 10 * Math.sin(gunTrack), track: gunTrack, v: bullet.v + this.ownship.v });
             this.bullets.push(bullet);
             this.webSocket.send(JSON.stringify({ id: "update", type: "bullet", uuid: this.uuid, time: this.clock.getTime(), state: bullet.getState() }));
         }
+
+        if (this.getKeyboardInputs()['missile'] && this.missileCooldown == 0) {
+            let missile = new Missile();
+            let missileTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank);
+            missile.setState({ x: this.ownship.x + 20 * Math.cos(missileTrack), y: this.ownship.y + 10 * Math.sin(missileTrack), track: missileTrack, v: this.ownship.v });
+            missile.lockTarget(Object.values(this.airplanes));
+            this.missiles.push(missile);
+            this.webSocket.send(JSON.stringify({ id: "update", type: "missile", uuid: this.uuid, time: this.clock.getTime(), state: missile.getState() }));
+            this.missileCooldown = 1.0;
+        }
     }
-
-
 }

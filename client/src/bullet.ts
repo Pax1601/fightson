@@ -1,4 +1,4 @@
-import { BulletSimulation } from "./bulletsimulations";
+import { BulletSimulation } from "./bulletsimulation";
 
 /** Bullet class. Extends the BulletSimulation class to separate the simulation from the rendering.
  * 

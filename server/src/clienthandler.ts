@@ -10,6 +10,7 @@ export class ClientHandler {
     server: Server
     webSocket: WebSocket;
     uuid: string;
+    username: string = "";
     
     /** Constructor
      * 
@@ -43,6 +44,9 @@ export class ClientHandler {
 
         /* Switch on the message id to find the appropriate callback */
         switch (json.id) {
+            case "data":
+                this.onDataMessage(json);
+                break;
             case "synchronization":
                 this.onSynchronizationMessage(json);
                 break;
@@ -61,6 +65,15 @@ export class ClientHandler {
         console.log(`${this.uuid} disconnected`)
         this.server.propagate(this, {id: "death", type: "airplane", uuid: this.uuid});
         this.server.removeClientHandler(this);
+    }
+
+    /** Data message callback. Contains data on the user, like the username, which is preserved.
+     * 
+     * 
+     * @param json Message content
+     */
+    onDataMessage(json: any) {
+        this.username = json.username;
     }
 
     /** Synchronization message callback. The server sends the message back appending the time of reception in local time. 

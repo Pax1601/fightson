@@ -1,3 +1,5 @@
+import { normalizeAngle } from "./utils";
+
 /** Abstract class representing a generic simulation entity
  * 
  */
@@ -17,6 +19,7 @@ export abstract class Simulation {
     /** Integrate the simulation forward by a fixed time delta
      * 
      * @param dt The time delta in seconds
+     * @param addTrail Boolean, check if the current integration should add an entry in the trail
      */
     integrate(dt: number, addTrail = true) {
         /* Change the velocity depending on acceleration */
@@ -27,7 +30,7 @@ export abstract class Simulation {
 
         /* Turn depending on lift */
         this.omega = this.computeLift() / (this.v / 200);
-        this.track += this.omega * dt;      
+        this.track = normalizeAngle(this.track + this.omega * dt);      
 
         /* Project velocity on cartesian axes */
         let vx = this.v * Math.cos(this.track); 

@@ -14,6 +14,8 @@ export class AirplaneSimulation extends Simulation {
     maxAngleOfAttack = 0.8;
     stalled = false;
     life = 100;
+    rollInertia = 0.3;
+    pitchInertia = 1;
 
     /* Airplane specific controls */
     throttlePosition: number = 0.5;
@@ -29,7 +31,8 @@ export class AirplaneSimulation extends Simulation {
         down: false,
         left: false,
         right: false,
-        gun: false
+        gun: false,
+        missile: false
     };
 
     gamepadInputs: GamepadInputs = {
@@ -55,18 +58,43 @@ export class AirplaneSimulation extends Simulation {
         this.angleOfAttack -= 0.5 * this.angleOfAttack * dt;
 
         /* Keyboard callbacks in case of lack of gamepads */
-        /* Change the angle of attack depending on the user input */
-        if (this.keyboardInputs['left'])
-            this.angleOfBank = Math.max(-1, this.angleOfBank - dt);
-        else if (this.keyboardInputs['right'])
-            this.angleOfBank = Math.min(1, this.angleOfBank + dt);    
 
-        /* Change the throttle position depending on the user input */
-        if (this.keyboardInputs['up'])
-            this.angleOfAttack = Math.max(-0.3, this.angleOfAttack - dt);
-        else if (this.keyboardInputs['down'])
-            this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);        
+        if (false) {
+            /* Change the angle of bank depending on the user input */
+            if (this.keyboardInputs['left'])
+                this.angleOfBank = Math.max(-1, this.angleOfBank - 1 / this.rollInertia * dt);
+            else if (this.keyboardInputs['right'])
+                this.angleOfBank = Math.min(1, this.angleOfBank + 1 / this.rollInertia * dt);
 
+            /* Change the angle of attack depending on the user input */
+            if (this.keyboardInputs['up'])
+                this.angleOfAttack = Math.max(-0.3, this.angleOfAttack - dt);
+            else if (this.keyboardInputs['down'])
+                this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);
+        } else {
+            if (this.keyboardInputs['left'])
+                this.angleOfBank = Math.max(-1, this.angleOfBank - 1 / this.rollInertia * dt);
+            else if (this.keyboardInputs['right'])
+                this.angleOfBank = Math.min(1, this.angleOfBank + 1 / this.rollInertia * dt);
+            
+            /* Change the angle of attack depending on the user input */
+            if (this.keyboardInputs['left']) {
+                if (this.angleOfBank < 0) {
+                    this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);
+                } else {
+                    this.angleOfAttack -= dt;
+                }
+            }
+            else if (this.keyboardInputs['right']) {
+                if (this.angleOfBank >= 0) {
+                    this.angleOfAttack = Math.min(1, this.angleOfAttack + dt);
+                } else {
+                    this.angleOfAttack -= dt;
+                }
+            }
+        }
+
+        /* Set the agle of attack depeding on the axis input, if present */
         if (this.gamepadInputs.pitch) {
             if (this.gamepadInputs.pitch > 0)
                 this.angleOfAttack = this.gamepadInputs.pitch;
@@ -74,12 +102,14 @@ export class AirplaneSimulation extends Simulation {
                 this.angleOfAttack = this.gamepadInputs.pitch * 0.3;
         }
 
+
+        /* Set the bank agle depeding on the axis input, if present */
         if (this.gamepadInputs.roll) {
-            this.angleOfBank += 3 * this.gamepadInputs.roll * dt;
+            this.angleOfBank += 1 / this.rollInertia * this.gamepadInputs.roll * dt;
             this.angleOfBank = Math.max(this.angleOfBank, -1);
             this.angleOfBank = Math.min(this.angleOfBank, 1);
         }
-        
+
         super.integrate(dt, addTrail);
     }
 
@@ -107,12 +137,12 @@ export class AirplaneSimulation extends Simulation {
         /* Below stall, lift increases linearly */
         if (Math.abs(this.angleOfAttack) < this.maxAngleOfAttack) {
             this.stalled = false;
-            return (this.v / 200 * this.v / 200) * this.liftCoefficient * this.angleOfAttack * this.angleOfBank;
+            return (this.v / 200 * this.v / 200) * this.liftCoefficient * this.angleOfAttack * Math.sign(this.angleOfBank) * (Math.abs(this.angleOfBank) > 0.3 ? 1 : 0);
         }
         /* After stall lift drops quickly */
         else {
             this.stalled = true;
-            return (this.v / 200 * this.v / 200) * this.maxAngleOfAttack * this.liftCoefficient * (1 + (this.maxAngleOfAttack - Math.abs(this.angleOfAttack)) / this.maxAngleOfAttack * 2) * Math.sign(this.angleOfAttack) * this.angleOfBank;
+            return (this.v / 200 * this.v / 200) * this.maxAngleOfAttack * this.liftCoefficient * (1 + (this.maxAngleOfAttack - Math.abs(this.angleOfAttack)) / this.maxAngleOfAttack * 2) * Math.sign(this.angleOfAttack) * Math.sign(this.angleOfBank) * (Math.abs(this.angleOfBank) > 0.3 ? 1 : 0);
         }
     }
     /** Compute the airplane drag
@@ -121,7 +151,7 @@ export class AirplaneSimulation extends Simulation {
      */
     computeDrag() {
         /* Drag increases with the sqare of speed, and has a constant and induced part, which in turns increases with the square of angle of attack */
-        return this.dragCoefficient * this.v * this.v * (1 + 1 / this.efficiency * this.angleOfAttack * this.angleOfAttack); 
+        return this.dragCoefficient * this.v * this.v * (1 + 1 / this.efficiency * this.angleOfAttack * this.angleOfAttack);
     }
 
     /** Compute the airplane thrust
@@ -152,7 +182,8 @@ export class AirplaneSimulation extends Simulation {
             v: this.v,
             track: this.track,
             angleOfAttack: this.angleOfAttack,
-            throttlePosition: this.throttlePosition
+            throttlePosition: this.throttlePosition,
+            life: this.life
         }
     }
 
@@ -167,5 +198,6 @@ export class AirplaneSimulation extends Simulation {
         this.track = state.track;
         this.angleOfAttack = state.angleOfAttack;
         this.throttlePosition = state.throttlePosition;
+        this.life = state.life;
     }
 }
