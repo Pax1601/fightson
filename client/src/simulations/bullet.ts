@@ -4,7 +4,6 @@ import { BulletSimulation } from "./bulletsimulation";
  * 
  */
 export class Bullet extends BulletSimulation {
-
     constructor() {
         super();
     }
@@ -12,11 +11,13 @@ export class Bullet extends BulletSimulation {
     /** Draw the bullet
      * 
      * @param ctx Canvas Rendering Context.
+     * @param x X position where to draw the bullet
+     * @param y Y position where to draw the bullet
      */
-    draw(ctx: CanvasRenderingContext2D) {
+    draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
         /* Draw the bullet */
         ctx.save();
-        ctx.translate(this.x, this.y);
+        ctx.translate(x, y);
         ctx.rotate(this.track);
         ctx.beginPath()
         ctx.strokeStyle = "yellow";

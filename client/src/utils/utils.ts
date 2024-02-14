@@ -1,4 +1,4 @@
-import { Simulation } from "./simulation";
+import { Simulation } from "../simulations/simulation";
 
 /** Asynchronous sleep function
  * 

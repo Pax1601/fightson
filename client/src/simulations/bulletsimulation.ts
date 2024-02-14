@@ -1,15 +1,29 @@
+import { GraphicalSimulation } from "./graphicalsimulation";
 import { Simulation } from "./simulation";
 
-/** Bullet simulation, extends the basic Simulation class.
+/** Bullet simulation, extends the basic GraphicalSimulation class.
  * 
  */
-export class BulletSimulation extends Simulation {
+export abstract class BulletSimulation extends GraphicalSimulation {
     dragCoefficient = .25e-2;
 
     v: number = 500;
 
     constructor() {
         super();
+    }
+
+    /** Integrate the simulation forward by a fixed time delta
+     * 
+     * @param dt The time delta in seconds
+     * @param addTrail Boolean, check if the current integration should add an entry in the trail
+     */
+    integrate(dt: number, addTrail?: boolean): void {
+        super.integrate(dt);
+
+        /* Remove any bullet that got too slow. */
+        if (this.v < 250)
+            Simulation.removeSimulation(this);
     }
 
     /** Compute the drag of the bullet

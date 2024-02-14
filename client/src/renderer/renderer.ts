@@ -1,10 +1,12 @@
-import { Airplane } from "./airplane";
-import { FightsOnCore } from "./core";
-import { Bullet } from "./bullet";
-import { normalizeAngle } from "./utils";
-import { Missile } from "./missile";
+import { FightsOnCore } from "../core";
+import { Airplane } from "../simulations/airplane";
+import { Missile } from "../simulations/missile";
+import { Bullet } from "../simulations/bullet";
 
-const ADI_RADIUS = 100;
+import { normalizeAngle } from "../utils/utils";
+import { Simulation } from "../simulations/simulation";
+import { GraphicalSimulation } from "../simulations/graphicalsimulation";
+
 const AOA_WIDTH = 60;
 const AOA_HEIGHT = 200;
 const RADAR_WIDTH = 200;
@@ -165,32 +167,6 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    /** Draws a bullet in it's location
-     * 
-     * @param bullet The bullet to draw
-     */
-    drawBullet(bullet: Bullet) {
-        if (!this.ctx) return;
-
-        this.ctx.save();
-        this.applyCamera();
-        bullet.draw(this.ctx);
-        this.ctx.restore();
-    }
-
-    /** Draws a missile in it's location
-     * 
-     * @param missile The missile to draw
-     */
-    drawMissile(missile: Missile) {
-        if (!this.ctx) return;
-
-        this.ctx.save();
-        this.applyCamera();
-        missile.draw(this.ctx);
-        this.ctx.restore();
-    }
-
     /** Draw the ownship overlay in terms of thrust, AoA and AoB
      * 
      * @param core App core
@@ -201,38 +177,9 @@ export class Renderer {
         if (!this.ctx) return;
 
         this.ctx.save();
-        ///* Draw background of bank indicator */
-        //this.ctx.translate(ADI_RADIUS + 25, this.canvas.height - (ADI_RADIUS + 25));
-        //this.ctx.beginPath();
-        //this.ctx.fillStyle = "#000A";
-        //this.ctx.arc(0, 0, ADI_RADIUS, 0, 2 * Math.PI);
-        //this.ctx.fill();
 
-        ///* Draw horizon line indicator */
-        //this.ctx.save();
-        //this.ctx.rotate(-core.ownship.angleOfBank);
-        //this.ctx.strokeStyle = "white";
-        //this.ctx.beginPath();
-        //this.ctx.moveTo(-ADI_RADIUS, 0);
-        //this.ctx.lineTo(ADI_RADIUS, 0);
-        //this.ctx.stroke();
-        //this.ctx.restore();
-
-        ///* Draw airplane indicator */
-        //this.ctx.strokeStyle = "white";
-        //this.ctx.beginPath();
-        //this.ctx.moveTo(-ADI_RADIUS * 0.75, 0);
-        //this.ctx.lineTo(-ADI_RADIUS * 0.25, 0);
-        //this.ctx.lineTo(-ADI_RADIUS * 0.125, ADI_RADIUS * 0.125);
-        //this.ctx.lineTo(0, 0);
-        //this.ctx.lineTo(ADI_RADIUS * 0.125, ADI_RADIUS * 0.125);
-        //this.ctx.lineTo(ADI_RADIUS * 0.25, 0);
-        //this.ctx.lineTo(ADI_RADIUS * 0.75, 0);
-        //this.ctx.stroke();
-        //this.ctx.restore();
-
-        this.ctx.save();
         /* Draw background of AoA indicator */
+        this.ctx.save();
         this.ctx.translate(25, this.canvas.height - AOA_HEIGHT - 25);
         this.ctx.fillStyle = "#000A";
         this.ctx.rect(0, 0, AOA_WIDTH, AOA_HEIGHT);
@@ -297,8 +244,7 @@ export class Renderer {
         this.ctx.stroke();
 
         /* Update the radar tracks */
-        for (let key of Object.keys(core.airplanes)) {
-            let airplane = core.airplanes[key];
+        for (let airplane of Simulation.getAllByType("airplane")) {
             if (airplane !== core.ownship) {
                 let azimuth = Math.atan2(airplane.y - core.ownship.y, airplane.x - core.ownship.x);
                 let bearing = normalizeAngle(core.ownship.track - azimuth);
@@ -336,23 +282,23 @@ export class Renderer {
      * @param dt Delta time from the previous drawing, in seconds
      */
     draw(core: FightsOnCore, dt: number) {
+        if (!this.ctx) return;
+        
         this.clear();
         this.setCamera(core.ownship.x, core.ownship.y, 0);
         this.drawBackground();
 
         /* Draw airplanes */
-        for (let airplane of Object.values(core.airplanes)) {
-            this.drawAirplane(airplane);
+        for (let airplane of GraphicalSimulation.getAllByType("airplane")) {
+            this.drawAirplane(airplane as Airplane);
         }
 
-        /* Draw bullets */
-        for (let bullet of core.bullets) {
-            this.drawBullet(bullet);
-        }
-
-        /* Draw missiles */
-        for (let missile of Object.values(core.missiles)) {
-            this.drawMissile(missile);
+        /* Draw weapons */
+        for (let weapon of GraphicalSimulation.getAllByType("bullet").concat(GraphicalSimulation.getAllByType("missile"))) {
+            this.ctx.save();
+            this.applyCamera();
+            weapon.draw(this.ctx, weapon.x, weapon.y, dt);
+            this.ctx.restore();
         }
 
         this.drawOverlay(core, dt);
@@ -368,7 +314,7 @@ export class Renderer {
         this.camera = { x: x, y: y, rotation: rotation };
     }
 
-    /** corelies the camera position and rotation to the context
+    /** Applies the camera position and rotation to the context
      * 
      */
     applyCamera() {

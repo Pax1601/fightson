@@ -1,6 +1,7 @@
 import { AirplaneSimulation } from "./airplanesimulation";
-import { Smoke } from "./smoke";
-import { randomRgba } from "./utils";
+import { Smoke } from "../renderer/effects/smoke";
+import { randomRgba } from "../utils/utils";
+import { nanoid } from "nanoid";
 
 /** Airplane class. Extends the AirplaneSimulation class to separate the simulation from the rendering.
  * 
@@ -13,8 +14,8 @@ export class Airplane extends AirplaneSimulation {
 
     src = "client/img/airplanes/debug" //TODO: confiburable path
     
-    constructor(ownship: boolean = false, username: string = "") {
-        super(ownship);
+    constructor(uuid: string | undefined = undefined, ownship: boolean = true, username: string = "") {
+        super(uuid, ownship);
         this.img.src = `${this.src}/top.png`; 
         this.username = username;
     }

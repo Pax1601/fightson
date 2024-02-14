@@ -1,10 +1,11 @@
-import { Airplane } from "./airplane";
-import { Bullet } from "./bullet";
-import { Missile } from "./missile";
-import { Clock } from "./clock";
-import { LoginState } from "./login";
-import { Renderer } from "./renderer";
-import { distance, sleep } from "./utils";
+import { Airplane } from "./simulations/airplane";
+import { Bullet } from "./simulations/bullet";
+import { Missile } from "./simulations/missile";
+import { Clock } from "./clock/clock";
+import { LoginState } from "./ui/login";
+import { Renderer } from "./renderer/renderer";
+import { distance, sleep } from "./utils/utils";
+import { Simulation } from "./simulations/simulation";
 
 /* Desired internal loop frequency */
 const FPS = 60;
@@ -30,13 +31,8 @@ export class FightsOnCore {
     uuid: string = "";
     username: string = "";
 
-    webSocket: WebSocket;
-    clock: Clock;
     renderer: Renderer;
     ownship: Airplane;
-    airplanes: { [key: string]: Airplane } = {};
-    bullets: Bullet[] = [];
-    missiles: { [key: string]: Missile }  = {};
     previousIntegrationTime: number = 0;
     pressedKeys: { [key: string]: boolean } = {};
     interval: number = 0;
@@ -47,19 +43,32 @@ export class FightsOnCore {
         gunControl: { id: string, button: number } | null
     }
 
-    missileCooldown = 0;
-    missileCooldownPeriod = 5;
+    /* Static members and methods */
+    static #webSocket: WebSocket;
+    static #clock: Clock;
 
+    /** Send a message via the websocket
+     * 
+     * @param json Message to send
+     */
+    static sendMessage(json: any) {
+        FightsOnCore.#webSocket.send(JSON.stringify(json));
+    }
+
+    static getClock() {
+        return FightsOnCore.#clock;
+    }
+    
     constructor() {
         /* Connect to the websocket */
-        this.webSocket = new WebSocket(`ws://${document.location.hostname}:${Number(document.location.port) + 1}`); //TODO configurable
+        FightsOnCore.#webSocket = new WebSocket(`ws://${document.location.hostname}:${Number(document.location.port) + 1}`); //TODO configurable
 
         /* Start the synchronized clock */
-        this.clock = new Clock();
+        FightsOnCore.#clock = new Clock();
 
         /* Define listeners */
-        this.webSocket.addEventListener('message', (ev) => this.onMessage(JSON.parse(ev.data.toString())));
-        this.webSocket.addEventListener('close', (ev) => this.onClose(ev));
+        FightsOnCore.#webSocket.addEventListener('message', (ev) => this.onMessage(JSON.parse(ev.data.toString())));
+        FightsOnCore.#webSocket.addEventListener('close', (ev) => this.onClose(ev));
 
         /* Key events for inputs */
         document.addEventListener('keydown', (ev) => this.onKeyDown(ev));
@@ -73,13 +82,12 @@ export class FightsOnCore {
             throw "Error retrieving canvas"
 
         /* Initialize the player airplane */
-        this.ownship = new Airplane(true);
-        this.airplanes = { "ownship": this.ownship };
+        this.ownship = new Airplane();
 
         /* Initialize the controls */
         this.gamepadControls = {
             pitchControl: null,
-            rollControl: null,
+            rollControl: null, 
             thrustControl: null,
             gunControl: null
         }
@@ -103,8 +111,7 @@ export class FightsOnCore {
             async () => {
                 /* Send user data */
                 let data = JSON.stringify({ id: "data", username: this.username });
-                this.webSocket.send(data);
-
+                FightsOnCore.sendMessage(data);
 
                 /* Perform the clock synchronization with the server */
                 await this.synchronizeTime();
@@ -125,7 +132,7 @@ export class FightsOnCore {
     async waitForConnection() {
         let retries = 10;
         while (retries-- > 0) {
-            if (this.webSocket.readyState === this.webSocket.OPEN) {
+            if (FightsOnCore.#webSocket.readyState === FightsOnCore.#webSocket.OPEN) {
                 return;
             }
             await sleep(100);
@@ -141,10 +148,10 @@ export class FightsOnCore {
         /* Send 10 synchronization messages to the server in order to try and average the lag delay */
         for (let i = 0; i < 10; i++) {
             let data = JSON.stringify({ id: "synchronization", time: Date.now() });
-            this.webSocket.send(data);
+            FightsOnCore.sendMessage(data);
             await sleep(100);
         }
-        console.log(`Estimated time delta: ${this.clock.delta}ms`)
+        console.log(`Estimated time delta: ${FightsOnCore.#clock.delta}ms`)
     }
 
     /** Message callback
@@ -209,7 +216,7 @@ export class FightsOnCore {
         let delta = serverTime - (txTime + delay);
 
         /* Add the sample to the clock, which will average the samples out. */
-        this.clock.addDeltaSample(delta);
+        FightsOnCore.#clock.addDeltaSample(delta);
     }
 
     /** Entity death message callback.
@@ -219,8 +226,11 @@ export class FightsOnCore {
     onDeathMessage(json: any) {
         if (json.type === "airplane") {
             /* Remove the airplane from the list */
-            delete this.airplanes[json.uuid];
-            console.log(`Death event for airplane ${json.uuid}`);
+            let airplane = Simulation.getByUUID(json.uuid);
+            if (airplane) {
+                Simulation.removeSimulation(airplane);
+                console.log(`Death event for airplane ${json.uuid}`);
+            }
         }
     }
 
@@ -229,72 +239,46 @@ export class FightsOnCore {
      * @param json Message content 
      */
     onUpdateMessage(json: any) {
-        if (json.type === "airplane") {
-            /* If the airplane is not yet in the dictionary, add it using its uuid as key */
-            if (!(json.uuid in this.airplanes)) {
-                this.airplanes[json.uuid] = new Airplane(false, json.username);
-                console.log(`Birth event for airplane ${json.uuid}`);
+        /* If the element has not been created yet, add it using its uuid as key */
+        if (Simulation.getByUUID(json.uuid) === undefined) {
+            switch (json.type) {
+                case "airplane":
+                    new Airplane(json.uuid, false, json.username);
+                    break;
+                case "bullet":
+                    new Bullet();
+                    break;
+                case "missile":
+                    new Missile(json.parent, json.uuid);
+                    break;
             }
+            
+            console.log(`Birth event for ${json.type} ${json.uuid}`);
+        }
 
-            let dt = (this.clock.getTime() - json.time) / 1000;
+        let dt = (FightsOnCore.#clock.getTime() - json.time) / 1000;
 
-            /* Reject old messages */
-            if (dt < 0.25) {
-                /* Set the state of the airplane */
-                this.airplanes[json.uuid].setState(json.state);
-
-                /* Integrate to compensate for lag */
-                this.airplanes[json.uuid].integrate(dt, false);
-            }
-        } else if (json.type === "bullet") {
-            /* Create the bullet. Bullet update signals are only sent on bullet creation to avoid 
-            excessive data transfers */
-            let bullet = new Bullet();
-
-            /* Set the bullet state */
-            bullet.setState(json.state);
+        /* Reject old messages */
+        if (dt < 0.25) {
+            /* Set the state of the simulation */
+            Simulation.getByUUID(json.uuid)?.setState(json.state);
 
             /* Integrate to compensate for lag */
-            let dt = (this.clock.getTime() - json.time) / 1000;
-            bullet.integrate(dt);
-
-            /* Add the bullet to the list */
-            this.bullets.push(bullet);
-        } else if (json.type === "missile") {
-            /* If the missile is not yet in the dictionary, add it using its uuid as key */
-            if (!(json.uuid in this.missiles)) {
-                this.missiles[json.uuid] = new Missile(json.parent, json.uuid);
-                console.log(`Birth event for missile ${json.uuid}`);
-            }
-
-            let dt = (this.clock.getTime() - json.time) / 1000;
-
-            /* Reject old messages */
-            if (dt < 0.25) {
-                /* Set the state of the missile */
-                this.missiles[json.uuid].setState(json.state);
-
-                /* Integrate to compensate for lag */
-                this.missiles[json.uuid].integrate(dt, false);
-            }
+            Simulation.getByUUID(json.uuid)?.integrate(dt, false);
         }
     }
 
-    
     /** Remove request message callback.
      * 
      * @param json Message content 
      */
     onRemoveMessage(json: any) {
-        if (json.type === "missile") {
-            /* If the airplane is not yet in the dictionary, add it using its uuid as key */
-            if (json.uuid in this.missiles) {
-                this.missiles[json.uuid].exploded = true;;
-                console.log(`Remove event for missile ${json.uuid}`);
-            }
+        let simulation = Simulation.getByUUID(json.uuid);
+        if (simulation) {
+            Simulation.removeSimulation(simulation);
+            console.log(`Remove event for ${json.type} ${json.uuid}`);
         }
     }
-
 
     /** This is the main loop of the application. Rendering and simulation loops are tied together, which is not good.
      * But for something this simple should be good enough.
@@ -303,11 +287,11 @@ export class FightsOnCore {
     loop() {
         /* If this is the first loop initialize the integration time */
         if (this.previousIntegrationTime == 0) {
-            this.previousIntegrationTime = this.clock.getTime();
+            this.previousIntegrationTime = FightsOnCore.#clock.getTime();
         }
         else {
             /* Compute the time step */
-            const newTime = this.clock.getTime();
+            const newTime = FightsOnCore.#clock.getTime();
             const dt = (newTime - this.previousIntegrationTime) / 1000; /* To seconds */
             this.previousIntegrationTime = newTime;
 
@@ -318,16 +302,9 @@ export class FightsOnCore {
             /* Read the gamepad controls */
             const gamepadInputs = this.getGamepadInputs();
             this.ownship.setGamepadInputs(gamepadInputs);
-
-            /* Apply missile cooldown to limit the number of missiles fired */
-            if (this.missileCooldown > 0) {
-                this.missileCooldown -= 1 / this.missileCooldownPeriod * dt;
-                if (this.missileCooldown < 0)
-                    this.missileCooldown = 0;
-            }
             
             /* Depending on the user inputs, fire any required weapons */
-            this.fireWeapons();
+            this.ownship.fireWeapons(this.getKeyboardInputs()['gun'], this.getKeyboardInputs()['missile']);
 
             /* Integrate the simulation */
             this.integrate(dt);
@@ -336,29 +313,30 @@ export class FightsOnCore {
             this.renderer.draw(this, dt);
 
             /* Send an update on the position of the ownship to the server */
-            this.webSocket.send(JSON.stringify({ id: "update", type: "airplane", uuid: this.uuid, time: this.clock.getTime(), state: this.ownship.getState(), username: this.username }));
+            FightsOnCore.sendMessage(JSON.stringify({ id: "update", type: "airplane", uuid: this.uuid, time: FightsOnCore.#clock.getTime(), state: this.ownship.getState(), username: this.username }));
 
             /* Hit detection */
-            for (let bullet of this.bullets) {
-                if (distance(this.ownship, bullet) < 10) {
-                    this.ownship.life -= 10;
-                }
-            }
-
-            /* Hit detection */
-            for (let key in this.missiles) {
-                let missile = this.missiles[key];
-
-                if (distance(this.ownship, missile) < 10 && !missile.exploded) {
-                    this.ownship.life -= 50;
-                    this.missiles[key].exploded = true;
-                    this.webSocket.send(JSON.stringify({ id: "remove", type: "missile", uuid: missile.uuid }));
-                } 
-            }
+            //TODO
+            //for (let bullet of this.bullets) {
+            //    if (distance(this.ownship, bullet) < 10) {
+            //        this.ownship.life -= 10;
+            //    }
+            //}
+//
+            ///* Hit detection */
+            //for (let key in this.missiles) {
+            //    let missile = this.missiles[key];
+//
+            //    if (distance(this.ownship, missile) < 10 && !missile.exploded) {
+            //        this.ownship.life -= 50;
+            //        this.missiles[key].exploded = true;
+            //        FightsOnCore.sendMessage(JSON.stringify({ id: "remove", type: "missile", uuid: missile.uuid }));
+            //    } 
+            //}
 
             if (this.ownship.life <= 0) {
-                //window.clearInterval(this.interval);
-                //location.replace(location.href);
+                window.clearInterval(this.interval);
+                location.replace(location.href);
             }
         }
     }
@@ -368,30 +346,8 @@ export class FightsOnCore {
      * @param dt Delta time, in seconds, since last integration.
      */
     integrate(dt: number) {
-        /* Integrate all the aiplanes */
-        for (let airplane of Object.values(this.airplanes)) {
-            airplane.integrate(dt);
-        }
-
-        /* Integrate all the bullets */
-        for (let bullet of this.bullets) {
-            bullet.integrate(dt);
-            /* Remove any bullet that got too slow. TODO: move inside bullet class */
-            if (bullet.v < 250)
-                this.bullets = this.bullets.filter(b => b !== bullet);
-        }
-
-        /* Integrate all the missiles */
-        for (let key in this.missiles) {
-            let missile = this.missiles[key];
-            missile.integrate(dt);
-            /* Remove any missile that got too slow. TODO: move inside missile class */
-            if (missile.v < 50)
-                this.missiles[key].exploded = true;
-
-            /* Send an update on the position of the missile to the server if we are the parent */
-            if (missile.parent === this.uuid) 
-                this.webSocket.send(JSON.stringify({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: this.clock.getTime(), state: missile.getState() }));
+        for (let simulation of Simulation.simulations) {
+            simulation.integrate(dt);
         }
     }
 
@@ -459,28 +415,5 @@ export class FightsOnCore {
      */
     onKeyUp(ev: KeyboardEvent) {
         this.pressedKeys[ev.code] = false;
-    }
-
-    /** Fires weapons depending on current inputs.
-     *  TODO: move into airplane class
-     */
-    fireWeapons() {
-        if (this.getKeyboardInputs()['gun']) {
-            let bullet = new Bullet();
-            let gunTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank) + (Math.random() - 0.5) * 0.05;
-            bullet.setState({ x: this.ownship.x + 10 * Math.cos(gunTrack), y: this.ownship.y + 10 * Math.sin(gunTrack), track: gunTrack, v: bullet.v + this.ownship.v });
-            this.bullets.push(bullet);
-            this.webSocket.send(JSON.stringify({ id: "update", type: "bullet", parent: this.uuid, time: this.clock.getTime(), state: bullet.getState() }));
-        }
-
-        if (this.getKeyboardInputs()['missile'] && this.missileCooldown == 0) {
-            let missile = new Missile(this.uuid);
-            let missileTrack = this.ownship.track + 0.25 * this.ownship.angleOfAttack * Math.sign(this.ownship.angleOfBank);
-            missile.setState({ x: this.ownship.x + 20 * Math.cos(missileTrack), y: this.ownship.y + 10 * Math.sin(missileTrack), track: missileTrack, v: this.ownship.v });
-            missile.lockTarget(Object.values(this.airplanes));
-            this.missiles[missile.uuid] = missile;
-            this.webSocket.send(JSON.stringify({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: this.clock.getTime(), state: missile.getState() }));
-            this.missileCooldown = 1.0;
-        }
     }
 }

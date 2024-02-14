@@ -1,6 +1,6 @@
 import { Component } from "react";
 import { Login, LoginState } from "./login";
-import { FightsOnCore } from "./core";
+import { FightsOnCore } from "../core";
 
 export interface FightsOnProps {
     core: FightsOnCore

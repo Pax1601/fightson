@@ -28,10 +28,12 @@ export class Smoke {
         this.radius += 0.05;
         let percent = (this.radius - this.initialRadius) / (this.finalRadius - this.initialRadius);
         percent = Math.max(percent, 0);
+        ctx.save();
         ctx.fillStyle = `rgba(${this.r}, ${this.g}, ${this.b}, ${1 - percent})`;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
         ctx.fill();
+        ctx.restore();
     }
 
     /** Check is the smoke should be removed

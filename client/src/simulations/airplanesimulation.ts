@@ -1,10 +1,14 @@
-import { GamepadInputs, KeyboardInputs } from "./core";
+import { FightsOnCore, GamepadInputs, KeyboardInputs } from "../core";
+import { Airplane } from "./airplane";
+import { Bullet } from "./bullet";
+import { GraphicalSimulation } from "./graphicalsimulation";
+import { Missile } from "./missile";
 import { Simulation } from "./simulation";
 
-/** Airplane simulation. Extends the basic Simulation class 
+/** Airplane simulation. Extends the basic GraphicalSimulation class 
  *  
  */
-export class AirplaneSimulation extends Simulation {
+export abstract class AirplaneSimulation extends GraphicalSimulation {
     /* Default parameters */
     maxThrust = 100;
     liftCoefficient = 2;
@@ -24,6 +28,10 @@ export class AirplaneSimulation extends Simulation {
 
     /* Default speed at spawn */
     v: number = 100;
+
+    /* Weapon parameters */
+    missileCooldown = 0;
+    missileCooldownPeriod = 5;
 
     /* Airplane inputs */
     keyboardInputs: KeyboardInputs = {
@@ -45,8 +53,8 @@ export class AirplaneSimulation extends Simulation {
     /* Boolean to represent if this is the airplane controlled by the client */
     ownship: boolean;
 
-    constructor(ownship: boolean = false) {
-        super();
+    constructor(uuid: string | undefined = undefined, ownship: boolean = false) {
+        super(uuid);
         this.ownship = ownship;
     }
 
@@ -58,7 +66,6 @@ export class AirplaneSimulation extends Simulation {
         this.angleOfAttack -= 0.5 * this.angleOfAttack * dt;
 
         /* Keyboard callbacks in case of lack of gamepads */
-
         if (false) {
             /* Change the angle of bank depending on the user input */
             if (this.keyboardInputs['left'])
@@ -92,6 +99,12 @@ export class AirplaneSimulation extends Simulation {
                     this.angleOfAttack -= dt;
                 }
             }
+
+            /* Change the angle of attack depending on the user input */
+            if (this.keyboardInputs['up'])
+                this.throttlePosition = Math.min(1, this.throttlePosition + dt) ;
+            else if (this.keyboardInputs['down'])
+                this.throttlePosition = Math.max(-1, this.throttlePosition - dt);
         }
 
         /* Set the agle of attack depeding on the axis input, if present */
@@ -102,12 +115,18 @@ export class AirplaneSimulation extends Simulation {
                 this.angleOfAttack = this.gamepadInputs.pitch * 0.3;
         }
 
-
         /* Set the bank agle depeding on the axis input, if present */
         if (this.gamepadInputs.roll) {
             this.angleOfBank += 1 / this.rollInertia * this.gamepadInputs.roll * dt;
             this.angleOfBank = Math.max(this.angleOfBank, -1);
             this.angleOfBank = Math.min(this.angleOfBank, 1);
+        }
+
+        /* Apply missile cooldown to limit the number of missiles fired */
+        if (this.missileCooldown > 0) {
+            this.missileCooldown -= 1 / this.missileCooldownPeriod * dt;
+            if (this.missileCooldown < 0)
+                this.missileCooldown = 0;
         }
 
         super.integrate(dt, addTrail);
@@ -201,5 +220,25 @@ export class AirplaneSimulation extends Simulation {
         this.angleOfBank = state.angleOfBank;
         this.throttlePosition = state.throttlePosition;
         this.life = state.life;
+    }
+
+    fireWeapons(fireGun: boolean, fireMissile: boolean) {
+        if (fireGun) {
+            let bullet = new Bullet();
+            let gunTrack = this.track + 0.25 * this.angleOfAttack * Math.sign(this.angleOfBank) + (Math.random() - 0.5) * 0.05;
+            bullet.setState({ x: this.x + 10 * Math.cos(gunTrack), y: this.y + 10 * Math.sin(gunTrack), track: gunTrack, v: bullet.v + this.v });
+
+            FightsOnCore.sendMessage({ id: "update", type: "bullet", parent: this.uuid, time: FightsOnCore.getClock().getTime(), state: bullet.getState() });
+        }
+
+        if (fireMissile && this.missileCooldown == 0) {
+            let missile = new Missile(this.uuid);
+            let missileTrack = this.track + 0.25 * this.angleOfAttack * Math.sign(this.angleOfBank);
+            missile.setState({ x: this.x + 20 * Math.cos(missileTrack), y: this.y + 10 * Math.sin(missileTrack), track: missileTrack, v: this.v });
+            missile.lockTarget(Simulation.getAllByType("airplane") as Airplane[]);
+
+            FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: FightsOnCore.getClock().getTime(), state: missile.getState() });
+            this.missileCooldown = 1.0;
+        }
     }
 }

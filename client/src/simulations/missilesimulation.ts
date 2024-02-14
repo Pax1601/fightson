@@ -1,11 +1,13 @@
 import { Airplane } from "./airplane";
+import { normalizeAngle } from "../utils/utils";
+import { GraphicalSimulation } from "./graphicalsimulation";
+import { AirplaneSimulation } from "./airplanesimulation";
 import { Simulation } from "./simulation";
-import { normalizeAngle } from "./utils";
 
-/** Missile simulation, extends the basic Simulation class.
+/** Missile simulation, extends the basic GraphicalSimulation class.
  * 
  */
-export class MissileSimulation extends Simulation {
+export abstract class MissileSimulation extends GraphicalSimulation {
     dragCoefficient = .25e-2;
 
     maxThrust = 1000;
@@ -13,9 +15,10 @@ export class MissileSimulation extends Simulation {
     fuel = 100;
 
     lockedTarget: Airplane | null = null;
+    exploded: boolean = false;
 
-    constructor() {
-        super();
+    constructor(uuid: string | undefined = undefined) {
+        super(uuid);
     }
 
     integrate(dt: number, addTrail?: boolean): void {
@@ -27,6 +30,15 @@ export class MissileSimulation extends Simulation {
         }
 
         super.integrate(dt, addTrail);
+
+        if (this.v < 50)
+            this.exploded = true;
+
+
+        /* Send an update on the position of the missile to the server if we are the parent */
+        // TODO
+        if (missile.parent === this.uuid) 
+            this.webSocket.send(JSON.stringify({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: this.clock.getTime(), state: missile.getState() }));
     }
 
     /** Check if there is a valid target in front of the missile
