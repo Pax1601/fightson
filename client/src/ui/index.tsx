@@ -1,6 +1,6 @@
 import { createRoot } from 'react-dom/client';
 
-import { FightsOnCore } from "./core";
+import { FightsOnCore } from "../core";
 import { FightsOnUI } from "./ui";
 
 window.onload = () => {

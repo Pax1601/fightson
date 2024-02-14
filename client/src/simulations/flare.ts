@@ -3,18 +3,18 @@ import { computeDistance } from "../utils/utils";
 import { Missile } from "./missile";
 import { Simulation } from "./simulation";
 
-/** Bullet simulation, extends the basic Simulation class.
+/** Flare simulation, extends the basic Simulation class.
  * 
  */
-export class Bullet extends Simulation {
-    dragCoefficient = .25e-2;
+export class Flare extends Simulation {
+    dragCoefficient = 1e-1;
 
-    v: number = 500;
+    v: number = 0;
 
     constructor(uuid: string | undefined = undefined) {
         super(uuid);
 
-        this.type = "bullet";
+        this.type = "flare";
     }
 
     /** Integrate the simulation forward by a fixed time delta
@@ -25,53 +25,48 @@ export class Bullet extends Simulation {
     integrate(dt: number, addTrail?: boolean): void {
         super.integrate(dt);
 
-        /* Remove any bullet that got too slow. */
-        if (this.v < 250)
+        /* Remove any flare that got too slow. */
+        if (this.v < 5)
             Simulation.removeSimulation(this);
-
-        /* Hit detection */
-        if (computeDistance(FightsOnCore.getOwnship(), this) < 10) {
-            FightsOnCore.getOwnship().life -= 10;
-        }
     }
 
-    /** Compute the drag of the bullet
+    /** Compute the drag of the flare
      * 
-     * @returns The drag of the bullet
+     * @returns The drag of the flare
      */
     computeDrag(): number {
-        /* Bullets have simple parasitic drag */
+        /* Flares have simple parasitic drag */
         return this.dragCoefficient * this.v * this.v; 
     }
 
-    /** Compute the lift of the bullet
+    /** Compute the lift of the flare
      * 
-     * @returns The lift of the bullet
+     * @returns The lift of the flare
      */
     computeLift(): number {
-        /* Bullets have no lift */
+        /* Flares have no lift */
         return 0;
     }
 
-    /** Compute the thrust of the bullet
+    /** Compute the thrust of the flare
      * 
-     * @returns The thrust of the bullet
+     * @returns The thrust of the flare
      */
     computeThrust(): number {
-        /* Bullets have no thrust */
+        /* Flares have no thrust */
         return 0;
     }
 
-    /** Clamp the velocity of the bullet 
+    /** Clamp the velocity of the flare 
      * 
      */
     clampVelocity(): void {
-        // TODO
+
     }
 
-    /** Get the state of the bullet
+    /** Get the state of the flare
      * 
-     * @returns The state of the bullet
+     * @returns The state of the flare
      */
     getState() {
         return {
@@ -82,9 +77,9 @@ export class Bullet extends Simulation {
         }
     }
 
-    /** Sets the state of the bullet
+    /** Sets the state of the flare
      * 
-     * @param state The state of the bullet
+     * @param state The state of the flare
      */
     setState(state: any) {
         this.x = state.x ?? this.x;
@@ -93,21 +88,37 @@ export class Bullet extends Simulation {
         this.track = state.track ?? this.track;
     }
 
-     /** Draw the bullet
+     /** Draw the flare
      * 
      * @param ctx Canvas Rendering Context.
-     * @param x X position where to draw the bullet
-     * @param y Y position where to draw the bullet
+     * @param x X position where to draw the flare
+     * @param y Y position where to draw the flare
      */
      draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
-        /* Draw the bullet */
+        /* Draw the trail */
+        let count = 0;
+        if (this.trail.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(this.trail[0].x, this.trail[0].y);
+            for (let i = 1; i < this.trail.length; i++) {
+                ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${count / this.trail.length})`;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(this.trail[i].x, this.trail[i].y);
+                count++;
+            }
+            
+        }
+
+        /* Draw the flare */
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(this.track);
         ctx.beginPath()
         ctx.strokeStyle = "yellow";
-        ctx.moveTo(-2, 0);
-        ctx.lineTo(2, 0);
+        ctx.moveTo(-1, 0);
+        ctx.lineTo(1, 0);
         ctx.stroke();
         ctx.restore();
     }
@@ -116,7 +127,6 @@ export class Bullet extends Simulation {
      * 
      */
     onRemoval(): void {
-        
     }
 
     /** Get the heat signature of the element
@@ -125,6 +135,7 @@ export class Bullet extends Simulation {
      * @returns Heat signature
      */
     getHeatSignature(missile: Missile): number {
-        return 0;
+        /* Flares have a constant heat signature */
+        return 0.5;
     }
 }

@@ -9,7 +9,7 @@ import { Server } from "./server";
 export class ClientHandler {
     server: Server
     webSocket: WebSocket;
-    uuid: string;
+    uuid: string = "";
     username: string = "";
     
     /** Constructor
@@ -18,9 +18,6 @@ export class ClientHandler {
      * @param webSocket Reference to the WebSocket associated with this client
      */
     constructor(server: Server, webSocket: WebSocket) {
-        /* Generate a random uuid to identify this client */
-        this.uuid = nanoid(10);
-
         this.server = server;
         this.webSocket = webSocket;
         
@@ -30,9 +27,9 @@ export class ClientHandler {
 
         /* Send back a connection confirmation message to the client. This informs the client
         on what is uuid will be */
-        this.webSocket.send(JSON.stringify({id: 'connection', uuid: this.uuid}));
+        this.webSocket.send(JSON.stringify({id: 'connection'}));
 
-        console.log(`${this.uuid} connected`)
+        console.log(`New client connected`)
     } 
 
     /** On message reception callback
@@ -76,6 +73,8 @@ export class ClientHandler {
      */
     onDataMessage(json: any) {
         this.username = json.username;
+        this.uuid = json.uuid;
+        console.log(`${json.username} was assigned uuid ${json.uuid}`)
     }
 
     /** Synchronization message callback. The server sends the message back appending the time of reception in local time. 

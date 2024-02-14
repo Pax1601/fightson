@@ -1,11 +1,9 @@
 import { FightsOnCore } from "../core";
 import { Airplane } from "../simulations/airplane";
-import { Missile } from "../simulations/missile";
-import { Bullet } from "../simulations/bullet";
 
 import { normalizeAngle } from "../utils/utils";
 import { Simulation } from "../simulations/simulation";
-import { GraphicalSimulation } from "../simulations/graphicalsimulation";
+import { Effect } from "./effects/effect";
 
 const AOA_WIDTH = 60;
 const AOA_HEIGHT = 200;
@@ -167,13 +165,38 @@ export class Renderer {
         this.ctx.restore();
     }
 
+    /* Draw the missile sensor location */
+    drawSensor() {
+        if (!this.ctx) return;
+
+        this.ctx.save();
+        this.ctx.strokeStyle = "#0005";
+        this.ctx.beginPath();
+        this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+
+        this.ctx.rotate(FightsOnCore.getOwnship().track + 0.25 * FightsOnCore.getOwnship().angleOfAttack * Math.sign(FightsOnCore.getOwnship().angleOfBank));
+
+        this.ctx.arc(0, 0, FightsOnCore.getOwnship().sensorDistance, -FightsOnCore.getOwnship().sensorCone, FightsOnCore.getOwnship().sensorCone)
+        this.ctx.stroke();
+
+        this.ctx.rotate(FightsOnCore.getOwnship().sensorCone);
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(FightsOnCore.getOwnship().sensorDistance, 0);
+
+        this.ctx.rotate(-2 * FightsOnCore.getOwnship().sensorCone);
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(FightsOnCore.getOwnship().sensorDistance, 0);
+        this.ctx.stroke();
+
+        this.ctx.restore();
+    }
+
     /** Draw the ownship overlay in terms of thrust, AoA and AoB
      * 
-     * @param core App core
      * @param dt Delta time from previous frame, in seconds
      * @returns 
      */
-    drawOverlay(core: FightsOnCore, dt: number) {
+    drawOverlay(dt: number) {
         if (!this.ctx) return;
 
         this.ctx.save();
@@ -182,8 +205,7 @@ export class Renderer {
         this.ctx.save();
         this.ctx.translate(25, this.canvas.height - AOA_HEIGHT - 25);
         this.ctx.fillStyle = "#000A";
-        this.ctx.rect(0, 0, AOA_WIDTH, AOA_HEIGHT);
-        this.ctx.fill();
+        this.ctx.fillRect(0, 0, AOA_WIDTH, AOA_HEIGHT);
 
         /* Draw ticks on AoA indicator */
         this.ctx.strokeStyle = "white";
@@ -201,7 +223,7 @@ export class Renderer {
         this.ctx.lineWidth = 5;
         this.ctx.beginPath();
         this.ctx.moveTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT);
-        this.ctx.lineTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT - (core.ownship.angleOfAttack + 0.3) * 8 / 10 * AOA_HEIGHT / 1.3);
+        this.ctx.lineTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT - (FightsOnCore.getOwnship().angleOfAttack + 0.3) * 8 / 10 * AOA_HEIGHT / 1.3);
         this.ctx.stroke();
         this.ctx.restore();
 
@@ -245,10 +267,10 @@ export class Renderer {
 
         /* Update the radar tracks */
         for (let airplane of Simulation.getAllByType("airplane")) {
-            if (airplane !== core.ownship) {
-                let azimuth = Math.atan2(airplane.y - core.ownship.y, airplane.x - core.ownship.x);
-                let bearing = normalizeAngle(core.ownship.track - azimuth);
-                let range = Math.sqrt(Math.pow(airplane.x - core.ownship.x, 2) + Math.pow(airplane.y - core.ownship.y, 2));
+            if (airplane !== FightsOnCore.getOwnship()) {
+                let azimuth = Math.atan2(airplane.y - FightsOnCore.getOwnship().y, airplane.x - FightsOnCore.getOwnship().x);
+                let bearing = normalizeAngle(FightsOnCore.getOwnship().track - azimuth);
+                let range = Math.sqrt(Math.pow(airplane.x - FightsOnCore.getOwnship().x, 2) + Math.pow(airplane.y - FightsOnCore.getOwnship().y, 2));
                 if (Math.abs(bearing + this.radarAngle) < this.radarSpeed * dt) {
                     this.radarContactPositions.push({bearing: bearing, range: range, level: 1});
                 }
@@ -278,30 +300,51 @@ export class Renderer {
 
     /** Draw the scene
      * 
-     * @param core Reference to the main core, to retrieve elements to draw
      * @param dt Delta time from the previous drawing, in seconds
      */
-    draw(core: FightsOnCore, dt: number) {
+    draw(dt: number) {
         if (!this.ctx) return;
         
         this.clear();
-        this.setCamera(core.ownship.x, core.ownship.y, 0);
+        this.setCamera(FightsOnCore.getOwnship().x, FightsOnCore.getOwnship().y, 0);
         this.drawBackground();
 
-        /* Draw airplanes */
-        for (let airplane of GraphicalSimulation.getAllByType("airplane")) {
-            this.drawAirplane(airplane as Airplane);
-        }
-
         /* Draw weapons */
-        for (let weapon of GraphicalSimulation.getAllByType("bullet").concat(GraphicalSimulation.getAllByType("missile"))) {
+        for (let weapon of Simulation.getAllByType("bullet").concat(Simulation.getAllByType("missile"))) {
             this.ctx.save();
             this.applyCamera();
             weapon.draw(this.ctx, weapon.x, weapon.y, dt);
             this.ctx.restore();
         }
 
-        this.drawOverlay(core, dt);
+        /* Draw countermeasures */
+        for (let countermeasure of Simulation.getAllByType("flare")) {
+            this.ctx.save();
+            this.applyCamera();
+            countermeasure.draw(this.ctx, countermeasure.x, countermeasure.y, dt);
+            this.ctx.restore();
+        }
+
+        /* Draw effects */
+        for (let effect of Effect.getAll()) {
+            this.ctx.save();
+            this.applyCamera();
+            effect.draw(this.ctx, effect.x, effect.y, dt);
+            this.ctx.restore();
+        }
+
+        /* Draw airplanes */
+        for (let airplane of Simulation.getAllByType("airplane")) {
+            this.ctx.save();
+            this.drawAirplane(airplane as Airplane);
+            this.ctx.restore();
+        }
+
+        /* Draw the weapon sensor location */
+        this.drawSensor();
+
+        /* Draw the HUD overlay */
+        this.drawOverlay(dt);
     }
 
     /** Sets the scene camera to a specific location

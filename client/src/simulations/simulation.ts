@@ -1,10 +1,12 @@
 import { nanoid } from "nanoid";
 import { normalizeAngle } from "../utils/utils";
+import { Missile } from "./missile";
 
 /** Abstract class representing a generic simulation entity
  * 
  */
 export abstract class Simulation {
+    type: string = "";
     uuid: string = "";
     x: number = 0;
     y: number = 0;
@@ -17,13 +19,17 @@ export abstract class Simulation {
 
     /* Static members and methods */
     static simulations: Simulation[] = [];
+    static removedUuids: string[] = [];
 
     /** Add a new simulation element
      * 
      * @param simulation Simulation element to register
      */
     static addSimulation(simulation: Simulation) {
-        Simulation.simulations.push(simulation);
+        /* Check that the simulation had not been previously removed already */
+        if (!Simulation.removedUuids.includes(simulation.uuid)) {
+            Simulation.simulations.push(simulation);
+        }
     }
 
     /** Remove a simulation element
@@ -31,7 +37,9 @@ export abstract class Simulation {
      * @param simulation Simulation element to register
      */
     static removeSimulation(simulation: Simulation) {
-        Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation === simulation; });
+        Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation !== simulation; });
+        simulation.onRemoval();
+        Simulation.removedUuids.push(simulation.uuid);
     }
 
     /** Returns a simulation element by uuid
@@ -43,21 +51,30 @@ export abstract class Simulation {
         return Simulation.simulations.find((simulation) => {return simulation.uuid === uuid;})
     }
 
+    /** Returns all the simulations 
+     * 
+     * @returns Array of simulation elements
+     */
+    static getAll() {
+        return Simulation.simulations;
+    }
+
     /** Returns all the simulations of a certain type
      * 
      * @param type Type to search for
      * @returns Array of simulation elements
      */
     static getAllByType(type: string) {
-        return Simulation.simulations.filter((simulation) => {return typeof simulation === type});
+        return Simulation.simulations.filter((simulation) => {return simulation.type === type});
     }
 
     constructor(uuid: string | undefined = undefined) {
-        Simulation.addSimulation(this);
         if (uuid)
             this.uuid = uuid;
         else
             this.uuid = nanoid(10);
+
+        Simulation.addSimulation(this);
     }
 
     /** Integrate the simulation forward by a fixed time delta
@@ -98,4 +115,7 @@ export abstract class Simulation {
     abstract clampVelocity(): void;
     abstract getState(): object;
     abstract setState(state: object): void;
+    abstract draw(ctx: CanvasRenderingContext2D, x: number, y: number, dt: number): void;
+    abstract onRemoval(): void;
+    abstract getHeatSignature(missile: Missile): number;
 }

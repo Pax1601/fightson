@@ -4,8 +4,9 @@ import { Missile } from "./simulations/missile";
 import { Clock } from "./clock/clock";
 import { LoginState } from "./ui/login";
 import { Renderer } from "./renderer/renderer";
-import { distance, sleep } from "./utils/utils";
+import { sleep } from "./utils/utils";
 import { Simulation } from "./simulations/simulation";
+import { Flare } from "./simulations/flare";
 
 /* Desired internal loop frequency */
 const FPS = 60;
@@ -17,7 +18,8 @@ export interface KeyboardInputs {
     left: boolean,
     right: boolean,
     gun: boolean,
-    missile: boolean
+    missile: boolean,
+    flare: boolean
 }
 
 export interface GamepadInputs {
@@ -28,11 +30,8 @@ export interface GamepadInputs {
 }
 
 export class FightsOnCore {
-    uuid: string = "";
     username: string = "";
 
-    renderer: Renderer;
-    ownship: Airplane;
     previousIntegrationTime: number = 0;
     pressedKeys: { [key: string]: boolean } = {};
     interval: number = 0;
@@ -46,6 +45,8 @@ export class FightsOnCore {
     /* Static members and methods */
     static #webSocket: WebSocket;
     static #clock: Clock;
+    static #renderer: Renderer;
+    static #ownship: Airplane;
 
     /** Send a message via the websocket
      * 
@@ -55,8 +56,28 @@ export class FightsOnCore {
         FightsOnCore.#webSocket.send(JSON.stringify(json));
     }
 
+    /** Get the static clock object
+     * 
+     * @returns The core clock
+     */
     static getClock() {
         return FightsOnCore.#clock;
+    }
+
+    /** Get the static renderer
+     * 
+     * @returns The renderer
+     */
+    static getRenderer() {
+        return FightsOnCore.#renderer;
+    }
+
+    /** Get the static ownship
+     * 
+     * @returns Thwe ownship
+     */
+    static getOwnship() {
+        return FightsOnCore.#ownship;
     }
     
     constructor() {
@@ -77,12 +98,12 @@ export class FightsOnCore {
         /* Start the renderer on the canvas */
         let canvas = document.getElementById("canvas") as HTMLCanvasElement;
         if (canvas) 
-            this.renderer = new Renderer(canvas as HTMLCanvasElement);
+            FightsOnCore.#renderer = new Renderer(canvas as HTMLCanvasElement);
         else
             throw "Error retrieving canvas"
 
         /* Initialize the player airplane */
-        this.ownship = new Airplane();
+        FightsOnCore.#ownship = new Airplane();
 
         /* Initialize the controls */
         this.gamepadControls = {
@@ -110,8 +131,7 @@ export class FightsOnCore {
         this.waitForConnection().then(
             async () => {
                 /* Send user data */
-                let data = JSON.stringify({ id: "data", username: this.username });
-                FightsOnCore.sendMessage(data);
+                FightsOnCore.sendMessage({ id: "data", username: this.username, uuid: FightsOnCore.getOwnship().uuid });
 
                 /* Perform the clock synchronization with the server */
                 await this.synchronizeTime();
@@ -147,8 +167,7 @@ export class FightsOnCore {
         console.log(`Starting time synchronization`)
         /* Send 10 synchronization messages to the server in order to try and average the lag delay */
         for (let i = 0; i < 10; i++) {
-            let data = JSON.stringify({ id: "synchronization", time: Date.now() });
-            FightsOnCore.sendMessage(data);
+            FightsOnCore.sendMessage({ id: "synchronization", time: Date.now() });
             await sleep(100);
         }
         console.log(`Estimated time delta: ${FightsOnCore.#clock.delta}ms`)
@@ -193,9 +212,7 @@ export class FightsOnCore {
      * @param json Message content
      */
     onConnectionMessage(json: any) {
-        /* Set the uuid that the server assigned us */
-        this.uuid = json.uuid;
-        console.log(`Assigned uuid ${this.uuid}`);
+        console.log("Successfully connected to server")
     }
 
     /** Synchronization message callback
@@ -229,7 +246,7 @@ export class FightsOnCore {
             let airplane = Simulation.getByUUID(json.uuid);
             if (airplane) {
                 Simulation.removeSimulation(airplane);
-                console.log(`Death event for airplane ${json.uuid}`);
+                console.log(`Disconnect event for airplane ${json.uuid}`);
             }
         }
     }
@@ -240,31 +257,36 @@ export class FightsOnCore {
      */
     onUpdateMessage(json: any) {
         /* If the element has not been created yet, add it using its uuid as key */
-        if (Simulation.getByUUID(json.uuid) === undefined) {
+        if (Simulation.getByUUID(json.uuid) === undefined && !Simulation.removedUuids.includes(json.uuid)) {
             switch (json.type) {
                 case "airplane":
                     new Airplane(json.uuid, false, json.username);
+                    console.log(`Birth event for ${json.username}, uuid ${json.uuid}`);
                     break;
                 case "bullet":
-                    new Bullet();
+                    new Bullet(json.uuid);
+                    break;
+                case "flare":
+                    new Flare(json.uuid);
                     break;
                 case "missile":
                     new Missile(json.parent, json.uuid);
+                    console.log(`Birth event for ${json.type}, uuid ${json.uuid}, parent ${json.parent}`);
                     break;
             }
-            
-            console.log(`Birth event for ${json.type} ${json.uuid}`);
         }
 
-        let dt = (FightsOnCore.#clock.getTime() - json.time) / 1000;
+        /* Check if the simulation was successfully registered */
+        if (Simulation.getByUUID(json.uuid)) {
+            let dt = (FightsOnCore.#clock.getTime() - json.time) / 1000;
+            /* Reject old messages */
+            if (dt < 0.25) {
+                /* Set the state of the simulation */
+                Simulation.getByUUID(json.uuid)?.setState(json.state);
 
-        /* Reject old messages */
-        if (dt < 0.25) {
-            /* Set the state of the simulation */
-            Simulation.getByUUID(json.uuid)?.setState(json.state);
-
-            /* Integrate to compensate for lag */
-            Simulation.getByUUID(json.uuid)?.integrate(dt, false);
+                /* Integrate to compensate for lag */
+                Simulation.getByUUID(json.uuid)?.integrate(dt, false);
+            }
         }
     }
 
@@ -295,48 +317,34 @@ export class FightsOnCore {
             const dt = (newTime - this.previousIntegrationTime) / 1000; /* To seconds */
             this.previousIntegrationTime = newTime;
 
-            /* Set the user keyboard inputs to the ownship */
-            const keyboardInputs = this.getKeyboardInputs();
-            this.ownship.setKeyboardInputs(keyboardInputs);
-
-            /* Read the gamepad controls */
-            const gamepadInputs = this.getGamepadInputs();
-            this.ownship.setGamepadInputs(gamepadInputs);
-            
-            /* Depending on the user inputs, fire any required weapons */
-            this.ownship.fireWeapons(this.getKeyboardInputs()['gun'], this.getKeyboardInputs()['missile']);
-
             /* Integrate the simulation */
             this.integrate(dt);
 
             /* Render the scene */
-            this.renderer.draw(this, dt);
+            FightsOnCore.getRenderer().draw(dt);
 
-            /* Send an update on the position of the ownship to the server */
-            FightsOnCore.sendMessage(JSON.stringify({ id: "update", type: "airplane", uuid: this.uuid, time: FightsOnCore.#clock.getTime(), state: this.ownship.getState(), username: this.username }));
+            /* Check if ownship is still alive */
+            if (FightsOnCore.getOwnship().life > 0) {
+                /* Set the user keyboard inputs to the ownship */
+                const keyboardInputs = this.getKeyboardInputs();
+                FightsOnCore.getOwnship().setKeyboardInputs(keyboardInputs);
 
-            /* Hit detection */
-            //TODO
-            //for (let bullet of this.bullets) {
-            //    if (distance(this.ownship, bullet) < 10) {
-            //        this.ownship.life -= 10;
-            //    }
-            //}
-//
-            ///* Hit detection */
-            //for (let key in this.missiles) {
-            //    let missile = this.missiles[key];
-//
-            //    if (distance(this.ownship, missile) < 10 && !missile.exploded) {
-            //        this.ownship.life -= 50;
-            //        this.missiles[key].exploded = true;
-            //        FightsOnCore.sendMessage(JSON.stringify({ id: "remove", type: "missile", uuid: missile.uuid }));
-            //    } 
-            //}
+                /* Read the gamepad controls */
+                const gamepadInputs = this.getGamepadInputs();
+                FightsOnCore.getOwnship().setGamepadInputs(gamepadInputs);
+                
+                /* Depending on the user inputs, fire any required weapons */
+                FightsOnCore.getOwnship().fireWeapons(this.getKeyboardInputs()['gun'], this.getKeyboardInputs()['missile']);
 
-            if (this.ownship.life <= 0) {
-                window.clearInterval(this.interval);
-                location.replace(location.href);
+                /* Depending on the user inputs, deploy any required countermearsures */
+                FightsOnCore.getOwnship().deployCounterMeasures(this.getKeyboardInputs()['flare']);
+
+                /* Send an update on the position of the ownship to the server */
+                FightsOnCore.sendMessage({ id: "update", type: "airplane", uuid: FightsOnCore.getOwnship().uuid, time: FightsOnCore.#clock.getTime(), state: FightsOnCore.getOwnship().getState(), username: this.username });
+            } else {
+                /* Remove the ownship */
+                Simulation.removeSimulation(FightsOnCore.getOwnship());
+                FightsOnCore.sendMessage({ id: "remove", type: "airplane", uuid: FightsOnCore.getOwnship().uuid });
             }
         }
     }
@@ -363,6 +371,7 @@ export class FightsOnCore {
             right: this.pressedKeys['KeyD'] ?? false,
             gun: this.pressedKeys['Space'] ?? false,
             missile: this.pressedKeys['KeyE'] ?? false,
+            flare: this.pressedKeys['KeyQ'] ?? false
         }
     }
 

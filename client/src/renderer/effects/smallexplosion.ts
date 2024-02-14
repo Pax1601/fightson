@@ -1,23 +1,15 @@
 import { Effect } from "./effect";
 
-export class Smoke extends Effect{
-    r: number;
-    g: number;
-    b: number;
+export class SmallExplosion extends Effect{
     initialRadius: number = 2;
     finalRadius: number = 5;
-    radius: number;
+    birthTime: number = Date.now();
 
-    constructor(x: number, y: number, r: number, g: number, b: number) {
+    constructor(x: number, y: number) {
         super(x, y);
 
         this.x = x;
         this.y = y;
-        this.radius = this.initialRadius;
-
-        this.r = r;
-        this.g = g;
-        this.b = b;
     }
 
     /** Draw the effect
@@ -30,13 +22,17 @@ export class Smoke extends Effect{
     draw(ctx: CanvasRenderingContext2D, x: number, y: number, dt: number) {
         this.checkExpired();
 
-        let percent = (this.radius - this.initialRadius) / (this.finalRadius - this.initialRadius);
-        this.radius += 0.05;
-        percent = Math.min(percent, 1);
         ctx.save();
-        ctx.fillStyle = `rgba(${this.r}, ${this.g}, ${this.b}, ${1 - percent})`;
+        ctx.filter = "blur(2px)";
+        ctx.fillStyle = `orange`;
+        ctx.strokeStyle = `orange`;
         ctx.beginPath();
-        ctx.arc(x, y, this.radius, 0, 2 * Math.PI);
+        ctx.arc(x, y, 10, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = `white`;
+        ctx.strokeStyle = `white`;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
         ctx.fill();
         ctx.restore();
     }
@@ -46,7 +42,8 @@ export class Smoke extends Effect{
      * @returns True if smoke is expired
      */
     checkExpired() {
-        if (this.radius >= this.finalRadius) {
+        let aliveTime = Date.now() - this.birthTime;
+        if (aliveTime > 200) {
             Effect.removeEffect(this);
             return true;
         }

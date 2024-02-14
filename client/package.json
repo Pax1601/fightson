@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "browserify ./src/index.tsx --debug -o ./build/bundle.js -t [ babelify --global true --presets [ @babel/preset-env ] --extensions '.js'] -p [ tsify --noImplicitAny ]",
-    "watch": "watchify ./src/index.tsx --debug -o ./build/bundle.js -t [ babelify --global true --presets [ @babel/preset-env ] --extensions '.js'] -p [ tsify --noImplicitAny ]"
+    "build": "browserify ./src/ui/index.tsx --debug -o ./build/bundle.js -t [ babelify --global true --presets [ @babel/preset-env ] --extensions '.js'] -p [ tsify --noImplicitAny ]",
+    "watch": "watchify ./src/ui/index.tsx --debug -o ./build/bundle.js -t [ babelify --global true --presets [ @babel/preset-env ] --extensions '.js'] -p [ tsify --noImplicitAny ]"
   },
   "keywords": [],
   "author": "",
