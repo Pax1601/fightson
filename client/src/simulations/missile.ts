@@ -15,10 +15,20 @@ export class Missile extends Simulation {
     burnRate = 100;
     fuel = 100;
 
+    sensorCone = 5 * Math.PI / 180;     /* Sensor head cone */
+    maximumOmega = 3;                   /* How quickly the missile can be commanded to turn. */
+    maximumBearing = 1;                 /* How much off boresight can the head turn. */
+    commandMultiplier = 0.8;            /* How aggressive the command is. High values can cause instability. */
+    headRateMultiplier = 0.1;           /* How quickly the missile head turns. High values can cause instability */   
+
     headBearing: number = 0;
     tone: number = 0;
     parent: string;
     commandedOmega: number = 0;
+
+    armingTime: number = 500;           /* Time in milliseconds before the missile is armed */
+
+    birthTime: number = Date.now();
 
     constructor(parent: string, uuid: string | undefined = undefined) {
         super(uuid);
@@ -35,23 +45,25 @@ export class Missile extends Simulation {
         /* If there is a target, slew the head towards it and compute the required turn rate */
         if (target) {
             let azimuth = Math.atan2(target.y - this.y, target.x - this.x);
-            let bearing = normalizeAngle(this.track - azimuth);
+            let bearing = normalizeAngle(azimuth - this.track);
 
-            let deltaBearing = this.headBearing - bearing;
+            let deltaBearing = this.commandMultiplier * bearing - this.headBearing;
             
-            this.commandedOmega = deltaBearing / dt * 0.25;
-            if (this.commandedOmega > 1)
-                this.commandedOmega = 1;
-            else if (this.commandedOmega < -1)
-                this.commandedOmega = -1;
-            this.headBearing = -bearing;
-            if (this.headBearing > 1)
-                this.headBearing = 1;
-            else if (this.headBearing < -1)
-                this.headBearing = -1;
+            this.commandedOmega = deltaBearing / dt;
+            if (this.commandedOmega > this.maximumOmega)
+                this.commandedOmega = this.maximumOmega;
+            else if (this.commandedOmega < -this.maximumOmega)
+                this.commandedOmega = -this.maximumOmega;
+            
+            this.headBearing += this.headRateMultiplier * deltaBearing;
+            if (this.headBearing > this.maximumBearing)
+                this.headBearing = this.maximumBearing;
+            else if (this.headBearing < -this.maximumBearing)
+                this.headBearing = -this.maximumBearing;
 
             this.tone = target.getHeatSignature(this);
         } else {
+            this.commandedOmega -= 0.1 * this.commandedOmega;
             this.tone = 0;
         }
 
@@ -73,7 +85,7 @@ export class Missile extends Simulation {
             FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: this.uuid, time: FightsOnCore.getClock().getTime(), state: this.getState() });
 
         /* Hit detection */
-        if (computeDistance(FightsOnCore.getOwnship(), this) < 10) {
+        if ((Date.now() - this.birthTime) > this.armingTime && computeDistance(FightsOnCore.getOwnship(), this) < 20) {
             FightsOnCore.getOwnship().life -= 50;
             FightsOnCore.sendMessage({ id: "remove", type: "missile", uuid: this.uuid });
             Simulation.removeSimulation(this);
@@ -186,17 +198,6 @@ export class Missile extends Simulation {
         ctx.lineWidth = 2;
         ctx.moveTo(-3, 0);
         ctx.lineTo(3, 0);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.beginPath()
-        ctx.translate(x, y);
-        ctx.rotate(this.track);
-        ctx.rotate(this.headBearing);
-        ctx.strokeStyle = "black";
-        ctx.lineWidth = 2;
-        ctx.moveTo(0, 0);
-        ctx.lineTo(20 + this.tone * 200, 0);
         ctx.stroke();
         ctx.restore();
     }

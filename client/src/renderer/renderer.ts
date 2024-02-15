@@ -165,32 +165,6 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    /* Draw the missile sensor location */
-    drawSensor() {
-        if (!this.ctx) return;
-
-        this.ctx.save();
-        this.ctx.strokeStyle = "#0005";
-        this.ctx.beginPath();
-        this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
-
-        this.ctx.rotate(FightsOnCore.getOwnship().track + 0.25 * FightsOnCore.getOwnship().angleOfAttack * Math.sign(FightsOnCore.getOwnship().angleOfBank));
-
-        this.ctx.arc(0, 0, FightsOnCore.getOwnship().sensorDistance, -FightsOnCore.getOwnship().sensorCone, FightsOnCore.getOwnship().sensorCone)
-        this.ctx.stroke();
-
-        this.ctx.rotate(FightsOnCore.getOwnship().sensorCone);
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(FightsOnCore.getOwnship().sensorDistance, 0);
-
-        this.ctx.rotate(-2 * FightsOnCore.getOwnship().sensorCone);
-        this.ctx.moveTo(0, 0);
-        this.ctx.lineTo(FightsOnCore.getOwnship().sensorDistance, 0);
-        this.ctx.stroke();
-
-        this.ctx.restore();
-    }
-
     /** Draw the ownship overlay in terms of thrust, AoA and AoB
      * 
      * @param dt Delta time from previous frame, in seconds
@@ -309,6 +283,22 @@ export class Renderer {
         this.setCamera(FightsOnCore.getOwnship().x, FightsOnCore.getOwnship().y, 0);
         this.drawBackground();
 
+        /* Draw effects */
+        for (let effect of Effect.getAll()) {
+            this.ctx.save();
+            this.applyCamera();
+            effect.draw(this.ctx, effect.x, effect.y, dt);
+            this.ctx.restore();
+        }
+
+        /* Draw other simulations */
+        for (let other of Simulation.getAllByType("debris")) {
+            this.ctx.save();
+            this.applyCamera();
+            other.draw(this.ctx, other.x, other.y, dt);
+            this.ctx.restore();
+        }
+
         /* Draw weapons */
         for (let weapon of Simulation.getAllByType("bullet").concat(Simulation.getAllByType("missile"))) {
             this.ctx.save();
@@ -325,23 +315,12 @@ export class Renderer {
             this.ctx.restore();
         }
 
-        /* Draw effects */
-        for (let effect of Effect.getAll()) {
-            this.ctx.save();
-            this.applyCamera();
-            effect.draw(this.ctx, effect.x, effect.y, dt);
-            this.ctx.restore();
-        }
-
         /* Draw airplanes */
         for (let airplane of Simulation.getAllByType("airplane")) {
             this.ctx.save();
             this.drawAirplane(airplane as Airplane);
             this.ctx.restore();
         }
-
-        /* Draw the weapon sensor location */
-        this.drawSensor();
 
         /* Draw the HUD overlay */
         this.drawOverlay(dt);

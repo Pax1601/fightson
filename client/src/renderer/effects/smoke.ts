@@ -6,10 +6,15 @@ export class Smoke extends Effect{
     b: number;
     initialRadius: number = 2;
     finalRadius: number = 5;
+    life: number = 2;
     radius: number;
 
-    constructor(x: number, y: number, r: number, g: number, b: number) {
+    constructor(x: number, y: number, r: number, g: number, b: number, initialRadius: number = 2, finalRadius: number = 5, life: number = 2) {
         super(x, y);
+
+        this.initialRadius = initialRadius;
+        this.finalRadius = finalRadius;
+        this.life = 2;
 
         this.x = x;
         this.y = y;
@@ -31,7 +36,7 @@ export class Smoke extends Effect{
         this.checkExpired();
 
         let percent = (this.radius - this.initialRadius) / (this.finalRadius - this.initialRadius);
-        this.radius += 0.05;
+        this.radius += (this.finalRadius - this.initialRadius) / this.life * dt;
         percent = Math.min(percent, 1);
         ctx.save();
         ctx.fillStyle = `rgba(${this.r}, ${this.g}, ${this.b}, ${1 - percent})`;

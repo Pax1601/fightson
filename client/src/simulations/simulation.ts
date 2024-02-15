@@ -27,7 +27,7 @@ export abstract class Simulation {
      */
     static addSimulation(simulation: Simulation) {
         /* Check that the simulation had not been previously removed already */
-        if (!Simulation.removedUuids.includes(simulation.uuid)) {
+        if (!Simulation.simulations.includes(simulation) && !Simulation.removedUuids.includes(simulation.uuid)) {
             Simulation.simulations.push(simulation);
         }
     }
@@ -37,9 +37,11 @@ export abstract class Simulation {
      * @param simulation Simulation element to register
      */
     static removeSimulation(simulation: Simulation) {
-        Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation !== simulation; });
-        simulation.onRemoval();
-        Simulation.removedUuids.push(simulation.uuid);
+        if (Simulation.simulations.includes(simulation)){ 
+            Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation !== simulation; });
+            simulation.onRemoval();
+            Simulation.removedUuids.push(simulation.uuid);
+        }
     }
 
     /** Returns a simulation element by uuid

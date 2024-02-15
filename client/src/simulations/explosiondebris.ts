@@ -3,10 +3,10 @@ import { computeDistance, normalizeAngle } from "../utils/utils";
 import { Missile } from "./missile";
 import { Simulation } from "./simulation";
 
-/** Flare simulation, extends the basic Simulation class.
+/** Debris simulation, extends the basic Simulation class.
  * 
  */
-export class Flare extends Simulation {
+export class ExplosionDebris extends Simulation {
     dragCoefficient = 0.5e-1;
 
     v: number = 0;
@@ -16,7 +16,7 @@ export class Flare extends Simulation {
     constructor(uuid: string | undefined = undefined) {
         super(uuid);
 
-        this.type = "flare";
+        this.type = "debris";
     }
 
     /** Integrate the simulation forward by a fixed time delta
@@ -32,55 +32,56 @@ export class Flare extends Simulation {
         let ySmoke = this.y - 2 * Math.sin(smokeTrack) + (Math.random() - 0.5) * 2;
 
         if (this.smokeCooldown <= 0) {
-            new Smoke(xSmoke, ySmoke, 255, 255, 255, 1, 2, 5);
+            let size = Math.random() * 5;
+            new Smoke(xSmoke, ySmoke, 0, 0, 0, size, size + Math.random() * 5, 5);
             this.smokeCooldown = 200 / this.v;  /* Decrease the smoke puffs with velocity, for efficiency */
         }
         else {
             this.smokeCooldown--;
         }
 
-        /* Remove any flare that got too slow. */
+        /* Remove any debris that got too slow. */
         if (this.v < 5)
             Simulation.removeSimulation(this);
     }
 
-    /** Compute the drag of the flare
+    /** Compute the drag of the debris
      * 
-     * @returns The drag of the flare
+     * @returns The drag of the debris
      */
     computeDrag(): number {
-        /* Flares have simple parasitic drag */
+        /* Debriss have simple parasitic drag */
         return this.dragCoefficient * this.v * this.v; 
     }
 
-    /** Compute the lift of the flare
+    /** Compute the lift of the debris
      * 
-     * @returns The lift of the flare
+     * @returns The lift of the debris
      */
     computeLift(): number {
-        /* Flares have no lift */
+        /* Debriss have no lift */
         return 0;
     }
 
-    /** Compute the thrust of the flare
+    /** Compute the thrust of the debris
      * 
-     * @returns The thrust of the flare
+     * @returns The thrust of the debris
      */
     computeThrust(): number {
-        /* Flares have no thrust */
+        /* Debriss have no thrust */
         return 0;
     }
 
-    /** Clamp the velocity of the flare 
+    /** Clamp the velocity of the debris 
      * 
      */
     clampVelocity(): void {
 
     }
 
-    /** Get the state of the flare
+    /** Get the state of the debris
      * 
-     * @returns The state of the flare
+     * @returns The state of the debris
      */
     getState() {
         return {
@@ -91,9 +92,9 @@ export class Flare extends Simulation {
         }
     }
 
-    /** Sets the state of the flare
+    /** Sets the state of the debris
      * 
-     * @param state The state of the flare
+     * @param state The state of the debris
      */
     setState(state: any) {
         this.x = state.x ?? this.x;
@@ -102,19 +103,20 @@ export class Flare extends Simulation {
         this.track = state.track ?? this.track;
     }
 
-     /** Draw the flare
+     /** Draw the debris
      * 
      * @param ctx Canvas Rendering Context.
-     * @param x X position where to draw the flare
-     * @param y Y position where to draw the flare
+     * @param x X position where to draw the debris
+     * @param y Y position where to draw the debris
      */
      draw(ctx: CanvasRenderingContext2D, x: number, y: number) {
-        /* Draw the flare */
+        /* Draw the debris */
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(this.track);
         ctx.beginPath()
-        ctx.strokeStyle = "yellow";
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 2;
         ctx.moveTo(-1, 0);
         ctx.lineTo(1, 0);
         ctx.stroke();
@@ -133,28 +135,7 @@ export class Flare extends Simulation {
      * @returns Heat signature
      */
     getHeatSignature(missile: Missile): number {
-        /* Compute distance and bearing */
-        let azimuth = Math.atan2(this.y - missile.y, this.x - missile.x);
-        let bearing = normalizeAngle(missile.track - azimuth);
-        let distance = computeDistance(this, missile);
-
-        /* This is how far away the airplane is from the center of the missile head FOV */
-        let deltaBearing = missile.headBearing - bearing;
-
-        /* Compute the heat signature */
-        const baseSignature = 0.25;
-
-        /* Distance multiplier. Being closer than 200 px casuses the multiplier to be greater than 1 */
-        const distanceMultiplier = Math.min(1.5, Math.pow(200 / distance, 2));
-
-        /* Multiplier due to bearing difference. Looking directly at the airplanes causes the multiplier to be greater than 1. It falls off very quickly outside of a narrow cone */
-        let deltaBearingMultiplier = 0;
-        if (Math.abs(deltaBearing) < 5 * Math.PI / 180) {
-            deltaBearingMultiplier = 1.0;
-        } else {
-            deltaBearingMultiplier = Math.max(0, 1 - Math.abs(deltaBearing - missile.sensorCone) / missile.sensorCone);
-        }
-
-        return baseSignature * distanceMultiplier * deltaBearingMultiplier;
+        /* Debries have no heat signature */
+        return 0;
     }
 }

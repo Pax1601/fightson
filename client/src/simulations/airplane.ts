@@ -1,7 +1,8 @@
 import { FightsOnCore, GamepadInputs, KeyboardInputs } from "../core";
 import { Smoke } from "../renderer/effects/smoke";
-import { computeDistance, normalizeAngle, randomRgba } from "../utils/utils";
+import { computeDistance, hexToRGB, normalizeAngle, randomRgba } from "../utils/utils";
 import { Bullet } from "./bullet";
+import { ExplosionDebris } from "./explosiondebris";
 import { Flare } from "./flare";
 import { Missile } from "./missile";
 import { Simulation } from "./simulation";
@@ -31,8 +32,6 @@ export class Airplane extends Simulation {
     v: number = 100;
 
     /* Weapon parameters */
-    sensorCone = 0.1;
-    sensorDistance = 500;
     missileCooldown = 0;
     missileCooldownPeriod = 5;
 
@@ -62,7 +61,7 @@ export class Airplane extends Simulation {
     ownship: boolean;
 
     img: HTMLImageElement = new Image();
-    trailColor = randomRgba();
+    trailColor = "#0000FF";
     username = "";
 
     src = "client/img/airplanes/debug" //TODO: confiburable path
@@ -307,7 +306,7 @@ export class Airplane extends Simulation {
         /* Draw the trail */
         if (this.trail.length > 0) {
             ctx.beginPath();
-            ctx.strokeStyle = this.trailColor;
+            ctx.strokeStyle = hexToRGB(this.trailColor, 0.5);
             ctx.moveTo(this.trail[0].x, this.trail[0].y);
             for (let i = 1; i < this.trail.length; i++) {
                 ctx.lineTo(this.trail[i].x, this.trail[i].y);
@@ -330,6 +329,13 @@ export class Airplane extends Simulation {
         ctx.translate(x + xBuffet, y + yBuffet);
         ctx.rotate(this.track + 0.25 * this.angleOfAttack * this.angleOfBank);
         ctx.drawImage(this.img, -this.img.width / 2, -this.img.height / 2);
+
+        ctx.beginPath();
+        ctx.strokeStyle = hexToRGB("#FFFF00", Math.min(1, Math.random() + 0.5));
+        ctx.moveTo(-this.img.width / 2, 0);
+        ctx.lineTo(-this.img.width / 2 - Math.max(0, this.throttlePosition - 0.8) * (20 + Math.random() * 5), 0);
+        ctx.stroke();
+
         ctx.restore();
 
         /* Draw the name */
@@ -347,7 +353,11 @@ export class Airplane extends Simulation {
      * 
      */
     onRemoval(): void {
-        
+        for (let i = 0; i < 5; i++) {
+            let debris = new ExplosionDebris();
+            let debrisTrack = this.track + Math.PI / 4 * (Math.random() - 0.5) * 2 * (i === 0? 0: 1); // At least one debris on the airplane track
+            debris.setState({ x: this.x, y: this.y, track: debrisTrack, v: i === 0? this.v: 500 * Math.random()});
+        }
     }
 
     /** Get the heat signature of the element
@@ -356,14 +366,42 @@ export class Airplane extends Simulation {
      * @returns Heat signature
      */
     getHeatSignature(missile: Missile): number {
+        /* Compute distance and bearing */
         let azimuth = Math.atan2(this.y - missile.y, this.x - missile.x);
         let bearing = normalizeAngle(missile.track - azimuth);
         let distance = computeDistance(this, missile);
 
+        /* This is how far away the airplane is from the center of the missile head FOV */
         let deltaBearing = missile.headBearing - bearing;
-        if (Math.abs(deltaBearing) < 1)
-            return 1 - (distance / 500);
-        else 
-            return 0.0;
+
+        /* This is the aspect angle of the airplane from the missile head FOV. 0 means the missile
+        is looking at the airplane tailpipe, PI is head to head */
+        let aspect = (missile.track + missile.headBearing) - azimuth;
+
+        /* Compute the heat signature */
+        const baseSignature = 1.0;
+
+        /* Multiplier due to throttle. High throttle values have a multiplier greater than 1 (Afterburner) */
+        const throttleMultiplier = Math.min(1.5, Math.pow(this.throttlePosition, 4) + 0.5);
+
+        /* Multiplier due to azimuth. Looking directly at the tailpipe causes the multiplier to be greater than 1 */
+        const aspectMultiplier = Math.min(1.5, Math.pow(1 - aspect / Math.PI, 4) + 0.5);
+
+        /* Distance multiplier. Being closer than 200 px casuses the multiplier to be greater than 1 */
+        const distanceMultiplier = Math.min(1.5, Math.pow(200 / distance, 2));
+
+        /* Multiplier due to bearing difference. Looking directly at the airplanes causes the multiplier to be greater than 1. It falls off very quickly outside of a narrow cone */
+        let deltaBearingMultiplier = 0;
+        if (Math.abs(deltaBearing) < missile.sensorCone) {
+            deltaBearingMultiplier = 1.0;
+        } else {
+            deltaBearingMultiplier = Math.max(0, 1 - Math.abs(deltaBearing - missile.sensorCone) / missile.sensorCone);
+        }
+
+        if (!this.ownship) {
+            console.log(throttleMultiplier, aspectMultiplier, distanceMultiplier, deltaBearingMultiplier)
+        }
+        
+        return baseSignature * throttleMultiplier * aspectMultiplier * distanceMultiplier * deltaBearingMultiplier;
     }
 }
