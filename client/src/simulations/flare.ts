@@ -1,6 +1,6 @@
 import { Smoke } from "../renderer/effects/smoke";
-import { computeDistance, normalizeAngle } from "../utils/utils";
-import { Missile } from "./missile";
+import { IRSensor } from "../sensors/irsensor";
+import { computeSensorDistance, normalizeAngle } from "../utils/utils";
 import { Simulation } from "./simulation";
 
 /** Flare simulation, extends the basic Simulation class.
@@ -129,30 +129,30 @@ export class Flare extends Simulation {
 
     /** Get the heat signature of the element
      * 
-     * @param missile The missile "looking" at the element
+     * @param sensor The sensor "looking" at the element
      * @returns Heat signature
      */
-    getHeatSignature(missile: Missile): number {
+    getHeatSignature(sensor: IRSensor): number {
         /* Compute distance and bearing */
-        let azimuth = Math.atan2(this.y - missile.y, this.x - missile.x);
-        let bearing = normalizeAngle(missile.track - azimuth);
-        let distance = computeDistance(this, missile);
+        let azimuth = Math.atan2(this.y - sensor.y, this.x - sensor.x);
+        let bearing = normalizeAngle(azimuth - sensor.track);
+        let distance = computeSensorDistance(this, sensor);
 
         /* This is how far away the airplane is from the center of the missile head FOV */
-        let deltaBearing = missile.headBearing - bearing;
+        let deltaBearing = sensor.headBearing - bearing;
 
         /* Compute the heat signature */
-        const baseSignature = 0.25;
+        const baseSignature = 1.5;
 
-        /* Distance multiplier. Being closer than 200 px casuses the multiplier to be greater than 1 */
-        const distanceMultiplier = Math.min(1.5, Math.pow(200 / distance, 2));
+        /* Distance multiplier. Being closer than 500 px casuses the multiplier to be greater than 1 */
+        const distanceMultiplier = Math.min(1.5, Math.pow(500 / distance, 2));
 
         /* Multiplier due to bearing difference. Looking directly at the airplanes causes the multiplier to be greater than 1. It falls off very quickly outside of a narrow cone */
         let deltaBearingMultiplier = 0;
-        if (Math.abs(deltaBearing) < 5 * Math.PI / 180) {
+        if (Math.abs(deltaBearing) < sensor.sensorCone) {
             deltaBearingMultiplier = 1.0;
         } else {
-            deltaBearingMultiplier = Math.max(0, 1 - Math.abs(deltaBearing - missile.sensorCone) / missile.sensorCone);
+            deltaBearingMultiplier = Math.max(0, 1 - Math.abs(deltaBearing - sensor.sensorCone) / sensor.sensorCone);
         }
 
         return baseSignature * distanceMultiplier * deltaBearingMultiplier;

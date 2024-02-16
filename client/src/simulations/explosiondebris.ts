@@ -1,4 +1,5 @@
 import { Smoke } from "../renderer/effects/smoke";
+import { IRSensor } from "../sensors/irsensor";
 import { computeDistance, normalizeAngle } from "../utils/utils";
 import { Missile } from "./missile";
 import { Simulation } from "./simulation";
@@ -131,10 +132,10 @@ export class ExplosionDebris extends Simulation {
 
     /** Get the heat signature of the element
      * 
-     * @param missile The missile "looking" at the element
+     * @param sensor The sensor "looking" at the element
      * @returns Heat signature
      */
-    getHeatSignature(missile: Missile): number {
+    getHeatSignature(sensor: IRSensor): number {
         /* Debries have no heat signature */
         return 0;
     }

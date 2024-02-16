@@ -19,11 +19,7 @@ export class Renderer {
     ctx: CanvasRenderingContext2D | null;
     camera = { x: 0, y: 0, rotation: 0 };
 
-    radarAngle = 0;
-    radarDirection = 1; 
-    radarSpeed = 1.5;
-    radarPersistency = 2;
-    radarContactPositions: {bearing: number, range: number, level: number}[] = [];
+    parametersToPlot: {t: number, value: number, range: number, color: string}[][] = [[], [], [], [], []];
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -197,7 +193,7 @@ export class Renderer {
         this.ctx.lineWidth = 5;
         this.ctx.beginPath();
         this.ctx.moveTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT);
-        this.ctx.lineTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT - (FightsOnCore.getOwnship().angleOfAttack + 0.3) * 8 / 10 * AOA_HEIGHT / 1.3);
+        this.ctx.lineTo(AOA_WIDTH / 2, 9 / 10 * AOA_HEIGHT - Math.abs(FightsOnCore.getOwnship().angleOfAttack) * 8 / 10 * AOA_HEIGHT);
         this.ctx.stroke();
         this.ctx.restore();
 
@@ -226,40 +222,18 @@ export class Renderer {
             this.ctx.stroke();
         }
 
-        /* Animate the radar scan */
-        this.radarAngle += this.radarDirection * this.radarSpeed * dt;
-        if (this.radarAngle >= 1)
-            this.radarDirection = -1;
-        else if (this.radarAngle <= -1)
-            this.radarDirection = 1;
-
         /* Draw radar scan */
         this.ctx.beginPath();
-        this.ctx.moveTo(RADAR_WIDTH / 2 + RADAR_WIDTH * this.radarAngle / 2, 0);
-        this.ctx.lineTo(RADAR_WIDTH / 2 + RADAR_WIDTH * this.radarAngle / 2, RADAR_HEIGHT);
+        this.ctx.moveTo(RADAR_WIDTH / 2 + RADAR_WIDTH * FightsOnCore.getOwnship().radarAngle / 2, 0);
+        this.ctx.lineTo(RADAR_WIDTH / 2 + RADAR_WIDTH * FightsOnCore.getOwnship().radarAngle / 2, RADAR_HEIGHT);
         this.ctx.stroke();
-
-        /* Update the radar tracks */
-        for (let airplane of Simulation.getAllByType("airplane")) {
-            if (airplane !== FightsOnCore.getOwnship()) {
-                let azimuth = Math.atan2(airplane.y - FightsOnCore.getOwnship().y, airplane.x - FightsOnCore.getOwnship().x);
-                let bearing = normalizeAngle(FightsOnCore.getOwnship().track - azimuth);
-                let range = Math.sqrt(Math.pow(airplane.x - FightsOnCore.getOwnship().x, 2) + Math.pow(airplane.y - FightsOnCore.getOwnship().y, 2));
-                if (Math.abs(bearing + this.radarAngle) < this.radarSpeed * dt) {
-                    this.radarContactPositions.push({bearing: bearing, range: range, level: 1});
-                }
-            }
-        }
-
-        /* Remove old contacts */
-        this.radarContactPositions = this.radarContactPositions.filter((contact) => {return contact.level > 0});
 
         /* Draw the contacts */
         this.ctx.lineWidth = 5;
-        for (let contact of this.radarContactPositions) {
+        for (let contact of FightsOnCore.getOwnship().radarContactPositions) {
             if (Math.abs(contact.bearing) < 1 && contact.range < 10000) {
                 this.ctx.strokeStyle = `rgba(255, 255, 255, ${contact.level})`;
-                contact.level -= 1 / this.radarPersistency * dt;
+                contact.level -= 1 / FightsOnCore.getOwnship().radarPersistency * dt;
                 let x = contact.bearing * (RADAR_WIDTH / 2 - 10);
                 let y = contact.range / 10000 * RADAR_HEIGHT;
                 this.ctx.beginPath();
@@ -270,6 +244,44 @@ export class Renderer {
         }
 
         this.ctx.restore();
+    }
+
+    /** Draw the debug plots
+     * 
+     * @param dt Delta time from previous frame, in seconds
+     * @returns 
+     */
+    drawPlots(dt: number) {
+        if (!this.ctx) return;
+
+        this.ctx.save();
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeStyle = "black";
+        this.ctx.translate(this.canvas.width, 100);
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, 0);
+        this.ctx.lineTo(-2000, 0);
+        this.ctx.stroke();
+        this.ctx.restore();
+
+        let t0 = Date.now();
+        for (let timeSeries of this.parametersToPlot) {
+            if (timeSeries.length > 0) {
+                this.ctx.save();
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeStyle = timeSeries[0].color;
+                this.ctx.translate(this.canvas.width, 100);
+                this.ctx.beginPath();
+                this.ctx.moveTo((timeSeries[0].t - t0) / 10, timeSeries[0].value * 10);
+                for (let i = 1; i < timeSeries.length; i++) {
+                    let timePoint = timeSeries[i];
+                    this.ctx.lineTo((timePoint.t - t0) / 10, timePoint.value * 100 / timePoint.range);
+                    this.ctx.moveTo((timePoint.t - t0) / 10, timePoint.value * 100 / timePoint.range);
+                }
+                this.ctx.stroke();
+                this.ctx.restore();
+            }
+        } 
     }
 
     /** Draw the scene
@@ -324,6 +336,11 @@ export class Renderer {
 
         /* Draw the HUD overlay */
         this.drawOverlay(dt);
+
+        /* Draw the debug plots */
+        if (FightsOnCore.debug) {
+            this.drawPlots(dt);
+        }
     }
 
     /** Sets the scene camera to a specific location

@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { normalizeAngle } from "../utils/utils";
-import { Missile } from "./missile";
+import { IRSensor } from "../sensors/irsensor";
 
 /** Abstract class representing a generic simulation entity
  * 
@@ -35,12 +35,16 @@ export abstract class Simulation {
     /** Remove a simulation element
      * 
      * @param simulation Simulation element to register
+     * @param quiet If true, onRemoval will not be called (usual not to play removal animation)
      */
-    static removeSimulation(simulation: Simulation) {
+    static removeSimulation(simulation: Simulation, quiet: boolean = false) {
         if (Simulation.simulations.includes(simulation)){ 
             Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation !== simulation; });
-            simulation.onRemoval();
             Simulation.removedUuids.push(simulation.uuid);
+
+            if (!quiet) {
+                simulation.onRemoval();
+            }
         }
     }
 
@@ -119,5 +123,5 @@ export abstract class Simulation {
     abstract setState(state: object): void;
     abstract draw(ctx: CanvasRenderingContext2D, x: number, y: number, dt: number): void;
     abstract onRemoval(): void;
-    abstract getHeatSignature(missile: Missile): number;
+    abstract getHeatSignature(sensor: IRSensor): number;
 }

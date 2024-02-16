@@ -1,3 +1,4 @@
+import { Sensor } from "../sensors/sensor";
 import { Simulation } from "../simulations/simulation";
 
 /** Asynchronous sleep function
@@ -17,6 +18,16 @@ export function sleep(ms: number) {
  */
 export function computeDistance(sim1: Simulation, sim2: Simulation) {
     return Math.sqrt(Math.pow(sim1.x - sim2.x, 2) + Math.pow(sim1.y - sim2.y, 2)); 
+}
+
+/** Computes distance between a simulation and a sensor
+ * 
+ * @param sim Entity 1
+ * @param sensor Entity 2
+ * @returns Distance between the entities
+ */
+export function computeSensorDistance(sim: Simulation, sensor: Sensor) {
+    return Math.sqrt(Math.pow(sim.x - sensor.x, 2) + Math.pow(sim.y - sensor.y, 2)); 
 }
 
 /** Return a random rgba string

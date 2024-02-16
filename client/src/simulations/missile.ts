@@ -1,34 +1,31 @@
-import { Airplane } from "./airplane";
 import { computeDistance, normalizeAngle } from "../utils/utils";
 import { FightsOnCore } from "../core";
 import { SmallExplosion } from "../renderer/effects/smallexplosion";
 import { Smoke } from "../renderer/effects/smoke";
 import { Simulation } from "./simulation";
+import { IRSensor } from "../sensors/irsensor";
 
 /** Missile simulation, extends the basic Simulation class.
  * 
  */
 export class Missile extends Simulation {
-    dragCoefficient = .25e-2;
+    dragCoefficient = .1e-2;
 
     maxThrust = 1000;
-    burnRate = 100;
-    fuel = 100;
+    burnRate = 100;                     /* Missile burn rate, higher number means shorter burn */
+    fuel = 100;                         /* Missile fuel, higher number means longer burn */
 
-    sensorCone = 5 * Math.PI / 180;     /* Sensor head cone */
     maximumOmega = 3;                   /* How quickly the missile can be commanded to turn. */
-    maximumBearing = 1;                 /* How much off boresight can the head turn. */
-    commandMultiplier = 0.8;            /* How aggressive the command is. High values can cause instability. */
-    headRateMultiplier = 0.1;           /* How quickly the missile head turns. High values can cause instability */   
+    commandMultiplier = 10;             /* How aggressive the command is. High values can cause instability. */
 
-    headBearing: number = 0;
-    tone: number = 0;
+    armingTime = 500;                   /* Time in milliseconds before the missile is armed */
+
     parent: string;
     commandedOmega: number = 0;
 
-    armingTime: number = 500;           /* Time in milliseconds before the missile is armed */
-
     birthTime: number = Date.now();
+
+    irsensor: IRSensor = new IRSensor();
 
     constructor(parent: string, uuid: string | undefined = undefined) {
         super(uuid);
@@ -39,38 +36,33 @@ export class Missile extends Simulation {
     integrate(dt: number, addTrail?: boolean): void {
         this.fuel -= this.burnRate * dt;
 
+        /* The sensor is attached to the missile head */
+        this.irsensor.track = this.track;
+        this.irsensor.x = this.x;
+        this.irsensor.y = this.y;
+
         /* Find the best target in front of the missile */
-        let target = this.lockTarget();
+        this.irsensor.lockTarget();
 
         /* If there is a target, slew the head towards it and compute the required turn rate */
-        if (target) {
-            let azimuth = Math.atan2(target.y - this.y, target.x - this.x);
-            let bearing = normalizeAngle(azimuth - this.track);
-
-            let deltaBearing = this.commandMultiplier * bearing - this.headBearing;
+        if (this.irsensor.lockedTarget) {
+            /* Slew the head of the sensor to the target */
+            let command = this.irsensor.slewHeadToTarget(dt);
             
-            this.commandedOmega = deltaBearing / dt;
+            /* Command a rate proportional to the head rotation */
+            this.commandedOmega = 0.9 * this.commandedOmega + 0.1 * this.commandMultiplier * command;
             if (this.commandedOmega > this.maximumOmega)
                 this.commandedOmega = this.maximumOmega;
             else if (this.commandedOmega < -this.maximumOmega)
                 this.commandedOmega = -this.maximumOmega;
-            
-            this.headBearing += this.headRateMultiplier * deltaBearing;
-            if (this.headBearing > this.maximumBearing)
-                this.headBearing = this.maximumBearing;
-            else if (this.headBearing < -this.maximumBearing)
-                this.headBearing = -this.maximumBearing;
-
-            this.tone = target.getHeatSignature(this);
         } else {
             this.commandedOmega -= 0.1 * this.commandedOmega;
-            this.tone = 0;
         }
 
         super.integrate(dt, addTrail);
 
-        /* Expire the missile if it got too slow */
-        if (this.v < 100) {
+        /* Expire the missile if it got too old */
+        if ((Date.now() - this.birthTime) > 30000) {
             Simulation.removeSimulation(this);
             console.log(`Missile ${this.uuid} expired`)
 
@@ -92,23 +84,6 @@ export class Missile extends Simulation {
 
             console.log(`Missile ${this.uuid} hit ownship`)
         }
-    }
-
-    /** Check if there is a valid target in front of the missile
-     * 
-     * @returns The target locked by the missile
-     */
-    lockTarget() {
-        let bestTarget: Simulation | null = null;
-
-        for (let target of Simulation.getAll()) {
-            if (bestTarget === null || target.getHeatSignature(this) > bestTarget.getHeatSignature(this)) 
-                bestTarget = target;
-        }
-        if (bestTarget !== null && Math.random() < bestTarget.getHeatSignature(this)) 
-            return bestTarget;
-        else 
-            return null;
     }
 
     /** Compute the drag of the missile
@@ -157,7 +132,8 @@ export class Missile extends Simulation {
             y: this.y,
             v: this.v,
             track: this.track,
-            fuel: this.fuel
+            fuel: this.fuel,
+            headBearing: this.irsensor.headBearing
         }
     }
 
@@ -171,6 +147,7 @@ export class Missile extends Simulation {
         this.v = state.v ?? this.v;
         this.track = state.track ?? this.track;
         this.fuel = state.fuel ?? this.fuel;
+        this.irsensor.headBearing = state.headBearing ?? this.irsensor.headBearing;
     }
 
     /** Draw the missile
@@ -200,6 +177,40 @@ export class Missile extends Simulation {
         ctx.lineTo(3, 0);
         ctx.stroke();
         ctx.restore();
+
+        /* Draw a lock symbol on the locked target, if present */
+        if (this.irsensor.lockedTarget) {
+            ctx.save();
+            ctx.translate(this.irsensor.lockedTarget.x, this.irsensor.lockedTarget.y);
+            ctx.strokeStyle = "red";
+            ctx.beginPath();
+            ctx.arc(0, 0, 15, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        /* For debugging, draw the sensor head direction */
+        if (FightsOnCore.debug) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(this.irsensor.track);
+            ctx.rotate(this.irsensor.headBearing);
+            ctx.strokeStyle = "red";
+
+            ctx.rotate(this.irsensor.sensorCone);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(1000, 0);
+            ctx.stroke();
+
+            ctx.rotate(-2 * this.irsensor.sensorCone);
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(1000, 0);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
     }
 
     /** Simple callback on removal, for effects
@@ -211,10 +222,10 @@ export class Missile extends Simulation {
 
     /** Get the heat signature of the element
      * 
-     * @param missile The missile "looking" at the element
+     * @param sensor The sensor "looking" at the element
      * @returns Heat signature
      */
-    getHeatSignature(missile: Missile): number {
+    getHeatSignature(sensor: IRSensor): number {
         return 0;
     }
 }

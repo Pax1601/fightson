@@ -8,6 +8,8 @@ import { sleep } from "./utils/utils";
 import { Simulation } from "./simulations/simulation";
 import { Flare } from "./simulations/flare";
 
+const DEBUG = false;
+
 /* Desired internal loop frequency */
 const FPS = 60;
 
@@ -30,17 +32,13 @@ export interface GamepadInputs {
 }
 
 export class FightsOnCore {
+    static debug = DEBUG;
+
     username: string = "";
 
     previousIntegrationTime: number = 0;
     pressedKeys: { [key: string]: boolean } = {};
     interval: number = 0;
-    gamepadControls: {
-        pitchControl: { id: string, axis: number } | null,
-        rollControl: { id: string, axis: number } | null,
-        thrustControl: { id: string, axis: number } | null,
-        gunControl: { id: string, button: number } | null
-    }
 
     /* Static members and methods */
     static #webSocket: WebSocket;
@@ -104,14 +102,6 @@ export class FightsOnCore {
 
         /* Initialize the player airplane */
         FightsOnCore.#ownship = new Airplane();
-
-        /* Initialize the controls */
-        this.gamepadControls = {
-            pitchControl: null,
-            rollControl: null, 
-            thrustControl: null,
-            gunControl: null
-        }
     }
 
     /** Asynchronously starts the app
@@ -120,12 +110,6 @@ export class FightsOnCore {
     async start(loginState: LoginState) {
         /* Read the login state */
         this.username = loginState.username;
-        this.gamepadControls = {
-            pitchControl: loginState.pitchGamepad,
-            rollControl: loginState.rollGamepad,
-            thrustControl: loginState.thrustGamepad,
-            gunControl: loginState.gunGamepad
-        }
 
         /* Wait for the WebSocket to actually connect */
         this.waitForConnection().then(
@@ -317,21 +301,11 @@ export class FightsOnCore {
             const dt = (newTime - this.previousIntegrationTime) / 1000; /* To seconds */
             this.previousIntegrationTime = newTime;
 
-            /* Integrate the simulation */
-            this.integrate(dt);
-
-            /* Render the scene */
-            FightsOnCore.getRenderer().draw(dt);
-
             /* Check if ownship is still alive */
             if (FightsOnCore.getOwnship().life > 0) {
                 /* Set the user keyboard inputs to the ownship */
                 const keyboardInputs = this.getKeyboardInputs();
                 FightsOnCore.getOwnship().setKeyboardInputs(keyboardInputs);
-
-                /* Read the gamepad controls */
-                const gamepadInputs = this.getGamepadInputs();
-                FightsOnCore.getOwnship().setGamepadInputs(gamepadInputs);
                 
                 /* Depending on the user inputs, fire any required weapons */
                 FightsOnCore.getOwnship().fireWeapons(this.getKeyboardInputs()['gun'], this.getKeyboardInputs()['missile']);
@@ -346,6 +320,12 @@ export class FightsOnCore {
                 Simulation.removeSimulation(FightsOnCore.getOwnship());
                 FightsOnCore.sendMessage({ id: "remove", type: "airplane", uuid: FightsOnCore.getOwnship().uuid });
             }
+
+            /* Integrate the simulation */
+            this.integrate(dt);
+
+            /* Render the scene */
+            FightsOnCore.getRenderer().draw(dt);
         }
     }
 
@@ -372,41 +352,6 @@ export class FightsOnCore {
             gun: this.pressedKeys['Space'] ?? false,
             missile: this.pressedKeys['KeyE'] ?? false,
             flare: this.pressedKeys['KeyQ'] ?? false
-        }
-    }
-
-    /** Gets the currently active gamepad inputs
-     * 
-     * @returns Inputs structure
-     */
-    getGamepadInputs() {
-        let pitch: number | null = null;
-        let roll: number | null = null;
-        let thrust: number | null = null;
-        let gun: boolean | null = null;
-
-        let gamepads = navigator.getGamepads();
-
-        if (this.gamepadControls.pitchControl) {
-            let gamepad = gamepads.find((gamepad) => {return gamepad?.id === this.gamepadControls.pitchControl?.id })
-            pitch = gamepad?.axes[this.gamepadControls.pitchControl.axis] ?? null;
-        }
-
-        if (this.gamepadControls.rollControl) {
-            let gamepad = gamepads.find((gamepad) => {return gamepad?.id === this.gamepadControls.rollControl?.id })
-            roll = gamepad?.axes[this.gamepadControls.rollControl.axis] ?? null;
-        }
-
-        if (this.gamepadControls.thrustControl) {
-            let gamepad = gamepads.find((gamepad) => {return gamepad?.id === this.gamepadControls.thrustControl?.id })
-            thrust = gamepad?.axes[this.gamepadControls.thrustControl.axis] ?? null;
-        }
-
-        return {
-            pitch: pitch,
-            roll: roll,
-            thrust: thrust,
-            gun: false //TODO
         }
     }
 

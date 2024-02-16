@@ -1,6 +1,6 @@
 import { FightsOnCore } from "../core";
+import { IRSensor } from "../sensors/irsensor";
 import { computeDistance } from "../utils/utils";
-import { Missile } from "./missile";
 import { Simulation } from "./simulation";
 
 /** Bullet simulation, extends the basic Simulation class.
@@ -121,10 +121,10 @@ export class Bullet extends Simulation {
 
     /** Get the heat signature of the element
      * 
-     * @param missile The missile "looking" at the element
+     * @param sensor The sensor "looking" at the element
      * @returns Heat signature
      */
-    getHeatSignature(missile: Missile): number {
+    getHeatSignature(sensor: IRSensor): number {
         return 0;
     }
 }
