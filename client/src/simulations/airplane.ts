@@ -86,7 +86,9 @@ export class Airplane extends Simulation {
 
     lastUpdate: number = Date.now();
 
-    img: HTMLImageElement = new Image();
+    imgTop: HTMLImageElement = new Image();
+    imgLeft: HTMLImageElement = new Image();
+    imgRight: HTMLImageElement = new Image();
     trailColor = "#0000FF";
     username = "";
 
@@ -95,7 +97,9 @@ export class Airplane extends Simulation {
     constructor(uuid: string | undefined = undefined, ownship: boolean = true, username: string = "") {
         super(uuid);
 
-        this.img.src = `${this.src}/top.png`; 
+        this.imgTop.src = `${this.src}/top.png`; 
+        this.imgLeft.src = `${this.src}/left.png`; 
+        this.imgRight.src = `${this.src}/right.png`; 
         this.username = username;
         this.ownship = ownship;
         this.type = "airplane";
@@ -134,7 +138,7 @@ export class Airplane extends Simulation {
             this.lastUpdate = Date.now();
         } else {
             if (Date.now() - this.lastUpdate > 1000) {
-                Simulation.removeSimulation(this, true);
+                Simulation.removeSimulation(this, true, false);
             }
         }  
     }
@@ -316,7 +320,7 @@ export class Airplane extends Simulation {
             let gunTrack = this.track + 0.25 * this.angleOfAttack + (Math.random() - 0.5) * 0.05;
             bullet.setState({ x: this.x + 10 * Math.cos(gunTrack), y: this.y + 10 * Math.sin(gunTrack), track: gunTrack, v: bullet.v + this.v });
 
-            FightsOnCore.sendMessage({ id: "update", type: "bullet", parent: this.uuid, uuid: bullet.uuid, time: FightsOnCore.getClock().getTime(), state: bullet.getState() });
+            FightsOnCore.sendMessage({ id: "update", type: "bullet", parent: this.uuid, uuid: bullet.uuid, time: FightsOnCore.getClock().getTime(), state: bullet.getState(), ssc: ++bullet.ssc });
             this.bullets--;
 
             if (this.bullets === 0)
@@ -329,7 +333,7 @@ export class Airplane extends Simulation {
             missile.setState({ x: this.x + 20 * Math.cos(missileTrack), y: this.y + 10 * Math.sin(missileTrack), track: missileTrack, v: this.v, headBearing: this.irsensor.headBearing });
     
             console.log(`Missile ${missile.uuid} launched by ${this.uuid}, is ownship: ${this.ownship}`);
-            FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: FightsOnCore.getClock().getTime(), state: missile.getState() });
+            FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: missile.uuid, time: FightsOnCore.getClock().getTime(), state: missile.getState(), ssc: ++missile.ssc });
 
             this.missileCooldown = this.missileCooldownPeriod;
             this.missiles--;
@@ -349,7 +353,7 @@ export class Airplane extends Simulation {
             let flareTrack = this.track;
             flare.setState({ x: this.x, y: this.y, track: flareTrack - Math.sign(this.angleOfAttack) * Math.PI / 4, v: 500 });
 
-            FightsOnCore.sendMessage({ id: "update", type: "flare", parent: this.uuid,  uuid: flare.uuid, time: FightsOnCore.getClock().getTime(), state: flare.getState() });
+            FightsOnCore.sendMessage({ id: "update", type: "flare", parent: this.uuid,  uuid: flare.uuid, time: FightsOnCore.getClock().getTime(), state: flare.getState(), ssc: ++flare.ssc });
 
             this.flareCooldown = this.flareCooldownPeriod;
             this.flares--;
@@ -388,26 +392,25 @@ export class Airplane extends Simulation {
         }
 
         /* Draw the airplane */
-        if (this.angleOfAttack < -0.1) 
-            this.img.src = `${this.src}/left.png`;
-        else if (this.angleOfAttack > 0.1) 
-            this.img.src = `${this.src}/right.png`;
-        else
-            this.img.src = `${this.src}/top.png`;
-
         ctx.save();
         let xBuffet = (Math.random() - 0.5) * 5 * this.angleOfAttack * this.angleOfAttack;
         let yBuffet = (Math.random() - 0.5) * 5 * this.angleOfAttack * this.angleOfAttack;
         ctx.translate(x + xBuffet, y + yBuffet);
         ctx.rotate(this.track + 0.25 * this.angleOfAttack);
-        ctx.drawImage(this.img, -this.img.width / 2, -this.img.height / 2);
+        if (this.angleOfAttack < -0.1) 
+            ctx.drawImage(this.imgLeft, -this.imgLeft.width / 2, -this.imgLeft.height / 2);
+        else if (this.angleOfAttack > 0.1) 
+            ctx.drawImage(this.imgRight, -this.imgRight.width / 2, -this.imgRight.height / 2);
+        else
+            ctx.drawImage(this.imgTop, -this.imgTop.width / 2, -this.imgTop.height / 2);
+        
 
         /* Draw afterburner */
         if (this.fuel > 0) {
             ctx.beginPath();
             ctx.strokeStyle = hexToRGB("#FFFF00", Math.min(1, Math.random() + 0.5));
-            ctx.moveTo(-this.img.width / 2, 0);
-            ctx.lineTo(-this.img.width / 2 - Math.max(0, this.throttlePosition - 0.8) * (20 + Math.random() * 5), 0);
+            ctx.moveTo(-this.imgTop.width / 2, 0);
+            ctx.lineTo(-this.imgTop.width / 2 - Math.max(0, this.throttlePosition - 0.8) * (20 + Math.random() * 5), 0);
             ctx.stroke();
         }
 

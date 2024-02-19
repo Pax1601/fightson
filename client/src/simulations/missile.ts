@@ -74,7 +74,7 @@ export class Missile extends Simulation {
 
         /* Send an update on the position of the missile to the server if we are the parent */
         if (this.parent === FightsOnCore.getOwnship().uuid) 
-            FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: this.uuid, time: FightsOnCore.getClock().getTime(), state: this.getState() });
+            FightsOnCore.sendMessage({ id: "update", type: "missile", parent: this.uuid, uuid: this.uuid, time: FightsOnCore.getClock().getTime(), state: this.getState(), ssc: ++this.ssc });
 
         /* Hit detection */
         if ((Date.now() - this.birthTime) > this.armingTime && computeDistance(FightsOnCore.getOwnship(), this) < 20) {

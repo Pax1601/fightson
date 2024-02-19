@@ -261,15 +261,31 @@ export class FightsOnCore {
         }
 
         /* Check if the simulation was successfully registered */
-        if (Simulation.getByUUID(json.uuid)) {
+        let simulation = Simulation.getByUUID(json.uuid);
+        if (simulation !== undefined) {
             let dt = (FightsOnCore.#clock.getTime() - json.time) / 1000;
-            /* Reject old messages */
-            if (dt < 0.25) {
-                /* Set the state of the simulation */
-                Simulation.getByUUID(json.uuid)?.setState(json.state);
 
-                /* Integrate to compensate for lag */
-                Simulation.getByUUID(json.uuid)?.integrate(dt, false);
+            /* Reject old messages */
+            if (dt < 0.25){
+                if (json.ssc > simulation.ssc) {
+                    /* Set the state of the simulation */
+                    simulation.setState(json.state);
+
+                    /* Update the ssc */
+                    simulation.ssc = json.ssc;
+
+                    /* Integrate to compensate for lag. Split the integration up in many smaller steps if needed */
+                    let tdt = dt;
+                    while (tdt > 0) {
+                        let sdt = Math.min(tdt, 1 / FPS);
+                        simulation.integrate(sdt, false);
+                        tdt -= sdt;
+                    }
+                } else {
+                    console.log(`Message from ${json.uuid} rejected, old ssc. ssc = ${json.ssc}, latest ssc ${simulation.ssc}`);
+                }
+            } else {
+                console.log(`Message from ${json.uuid} rejected, too old. dt = ${dt}s`);
             }
         }
     }
@@ -314,7 +330,7 @@ export class FightsOnCore {
                 FightsOnCore.getOwnship().deployCounterMeasures(this.getKeyboardInputs()['flare']);
 
                 /* Send an update on the position of the ownship to the server */
-                FightsOnCore.sendMessage({ id: "update", type: "airplane", uuid: FightsOnCore.getOwnship().uuid, time: FightsOnCore.#clock.getTime(), state: FightsOnCore.getOwnship().getState(), username: this.username });
+                FightsOnCore.sendMessage({ id: "update", type: "airplane", uuid: FightsOnCore.getOwnship().uuid, time: newTime, state: FightsOnCore.getOwnship().getState(), username: this.username, ssc: ++FightsOnCore.getOwnship().ssc });
             } else {
                 /* Remove the ownship */
                 Simulation.removeSimulation(FightsOnCore.getOwnship());

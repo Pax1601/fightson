@@ -16,6 +16,7 @@ export abstract class Simulation {
     omega: number = 0;
 
     trail: { x: number, y: number }[] = [];
+    ssc: number = 0;        /* Sequence counter for update messages */
 
     /* Static members and methods */
     static simulations: Simulation[] = [];
@@ -36,11 +37,15 @@ export abstract class Simulation {
      * 
      * @param simulation Simulation element to register
      * @param quiet If true, onRemoval will not be called (usual not to play removal animation)
+     * @param permanent If true, the simulation can not be readded
      */
-    static removeSimulation(simulation: Simulation, quiet: boolean = false) {
+    static removeSimulation(simulation: Simulation, quiet: boolean = false, permanent: boolean = true) {
         if (Simulation.simulations.includes(simulation)){ 
             Simulation.simulations = Simulation.simulations.filter((existingSimulation) => { return existingSimulation !== simulation; });
-            Simulation.removedUuids.push(simulation.uuid);
+
+            /* Permanently removed objects are added to the list and can't be readded */
+            if (permanent)
+                Simulation.removedUuids.push(simulation.uuid);
 
             if (!quiet) {
                 simulation.onRemoval();

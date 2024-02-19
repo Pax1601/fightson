@@ -49,8 +49,10 @@ export class ClientHandler {
                 break;
             case "update":
                 this.onUpdateMessage(json);
+                break;
             case "remove":
                 this.onRemoveMessage(json);
+                break;
             default: 
                 break;
         }
