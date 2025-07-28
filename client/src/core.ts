@@ -80,7 +80,7 @@ export class FightsOnCore {
     
     constructor() {
         /* Connect to the websocket */
-        FightsOnCore.#webSocket = new WebSocket(`ws://${location.host + location.pathname}`); //TODO configurable
+        FightsOnCore.#webSocket = new WebSocket(`wss://${location.host + location.pathname}`); //TODO configurable
 
         /* Start the synchronized clock */
         FightsOnCore.#clock = new Clock();
