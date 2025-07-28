@@ -23,10 +23,8 @@ export class WebServer {
     /** Starts listening for incoming requests
      * 
      */
-    start() {
-        this.app.listen(this.port, () => {
-            console.log(`WebServer listening on ${this.port}`)
-        })
+    getApp() {
+        return this.app;
     }
 
     /** Simple get request handler

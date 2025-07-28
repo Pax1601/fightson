@@ -1,13 +1,13 @@
 import { RawData, WebSocket } from "ws";
 import { nanoid } from 'nanoid';
-import { Server } from "./server";
+import { WebSocketServer } from "./server";
 
 /** Client handler that will listen to messages from a client, perform client synchronization, and handle message propagation.
  * 
  */
 
 export class ClientHandler {
-    server: Server
+    server: WebSocketServer
     webSocket: WebSocket;
     uuid: string = "";
     username: string = "";
@@ -17,7 +17,7 @@ export class ClientHandler {
      * @param server Reference to the main server, used for propagation
      * @param webSocket Reference to the WebSocket associated with this client
      */
-    constructor(server: Server, webSocket: WebSocket) {
+    constructor(server: WebSocketServer, webSocket: WebSocket) {
         this.server = server;
         this.webSocket = webSocket;
         
